@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mis Finanzas</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div id="app" class="hidden">
+        <header id="header">
+            <div class="header-top">
+                <h1 class="app-title">Mis Finanzas</h1>
+                <div class="header-right">
+                    <span class="header-user" id="current-user"></span>
+                    <span class="header-date" id="current-date"></span>
+                    <button class="header-logout" onclick="logout()" title="Cerrar sesión">🚪</button>
+                </div>
+            </div>
+            <div class="balance-container">
+                <span class="balance-label">Balance Total</span>
+                <span class="balance-amount" id="total-balance">$0.00</span>
+            </div>
+            <div class="quick-stats">
+                <div class="quick-stat">
+                    <span class="quick-stat-label">Ingresos</span>
+                    <span class="quick-stat-value income" id="quick-income">$0</span>
+                </div>
+                <div class="quick-stat">
+                    <span class="quick-stat-label">Gastos</span>
+                    <span class="quick-stat-value expense" id="quick-expense">$0</span>
+                </div>
+                <div class="quick-stat">
+                    <span class="quick-stat-label">Movimientos</span>
+                    <span class="quick-stat-value" id="quick-count">0</span>
+                </div>
+            </div>
+        </header>
+
+        <main id="main-content">
+            <!-- Dashboard -->
+            <section id="page-dashboard" class="page active">
+                <div class="section-header">
+                    <h2>Resumen</h2>
+                    <span id="month-label" class="month-label"></span>
+                </div>
+
+                <div class="chart-card">
+                    <h3 class="card-title">Gastos por Categoría</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="expenseChart"></canvas>
+                    </div>
+                    <p class="chart-empty" id="expense-chart-empty">Sin gastos este mes</p>
+                </div>
+
+                <div class="chart-card">
+                    <h3 class="card-title">Ingresos vs Gastos</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="monthlyChart"></canvas>
+                    </div>
+                    <p class="chart-empty" id="monthly-chart-empty">Sin datos este mes</p>
+                </div>
+
+                <div style="text-align:center;margin-bottom:16px">
+                    <button class="text-btn" onclick="navigateTo('stats')" style="font-size:14px">📊 Estadísticas completas</button>
+                </div>
+
+                <div class="section-header">
+                    <h3>Últimos Movimientos</h3>
+                    <button class="text-btn" onclick="navigateTo('transactions')">Ver todos</button>
+                </div>
+                <div id="recent-transactions" class="transactions-list"></div>
+            </section>
+
+            <!-- Transactions -->
+            <section id="page-transactions" class="page">
+                <div class="section-header">
+                    <h2>Movimientos</h2>
+                </div>
+
+                <div class="filters">
+                    <button class="filter-btn active" data-filter="all" onclick="filterTransactions('all')">Todos</button>
+                    <button class="filter-btn" data-filter="income" onclick="filterTransactions('income')">Ingresos</button>
+                    <button class="filter-btn" data-filter="expense" onclick="filterTransactions('expense')">Gastos</button>
+                </div>
+
+                <div id="all-transactions" class="transactions-list"></div>
+            </section>
+
+            <!-- Add Transaction -->
+            <section id="page-add" class="page">
+                <div class="section-header">
+                    <h2>Nuevo Movimiento</h2>
+                </div>
+
+                <form id="transaction-form" class="add-form" autocomplete="off">
+                    <div class="type-toggle">
+                        <button type="button" class="type-btn income-type" data-type="income">Ingreso</button>
+                        <button type="button" class="type-btn expense-type active" data-type="expense">Gasto</button>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="tx-amount">Monto</label>
+                        <div class="amount-input-wrapper">
+                            <span class="currency-sign">$</span>
+                            <input type="number" id="tx-amount" step="0.01" min="0.01" placeholder="0.00" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="tx-category">Categoría</label>
+                        <select id="tx-category" required>
+                            <option value="">Seleccionar</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="tx-description">Descripción</label>
+                        <input type="text" id="tx-description" placeholder="Ej: Supermercado, Sueldo..." required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="tx-date">Fecha</label>
+                        <input type="date" id="tx-date" required>
+                    </div>
+
+                    <button type="submit" class="submit-btn">Guardar</button>
+                </form>
+            </section>
+
+            <!-- Statistics -->
+            <section id="page-stats" class="page">
+                <div class="section-header">
+                    <h2>Estadísticas</h2>
+                </div>
+
+                <div class="period-selector">
+                    <div class="preset-btns">
+                        <button class="preset-btn active" data-period="this-month" onclick="setPeriod('this-month')">Este mes</button>
+                        <button class="preset-btn" data-period="last-month" onclick="setPeriod('last-month')">Mes pasado</button>
+                        <button class="preset-btn" data-period="last-3" onclick="setPeriod('last-3')">Últ. 3 meses</button>
+                        <button class="preset-btn" data-period="this-year" onclick="setPeriod('this-year')">Este año</button>
+                    </div>
+                    <div class="custom-date-range">
+                        <input type="date" id="stats-from" onchange="setCustomRange()">
+                        <span>→</span>
+                        <input type="date" id="stats-to" onchange="setCustomRange()">
+                    </div>
+                </div>
+
+                <div class="stats-summary">
+                    <div class="stat-mini-card income-bg">
+                        <span class="stat-mini-label">Ingresos</span>
+                        <span class="stat-mini-value" id="stats-income">$0</span>
+                    </div>
+                    <div class="stat-mini-card expense-bg">
+                        <span class="stat-mini-label">Gastos</span>
+                        <span class="stat-mini-value" id="stats-expense">$0</span>
+                    </div>
+                    <div class="stat-mini-card">
+                        <span class="stat-mini-label">Balance</span>
+                        <span class="stat-mini-value" id="stats-balance">$0</span>
+                    </div>
+                    <div class="stat-mini-card">
+                        <span class="stat-mini-label">Gasto diario</span>
+                        <span class="stat-mini-value" id="stats-daily">$0</span>
+                    </div>
+                    <div class="stat-mini-card income-bg">
+                        <span class="stat-mini-label">Ingreso diario</span>
+                        <span class="stat-mini-value" id="stats-daily-income">$0</span>
+                    </div>
+                    <div class="stat-mini-card">
+                        <span class="stat-mini-label">Transacciones</span>
+                        <span class="stat-mini-value" id="stats-count">0</span>
+                    </div>
+                </div>
+
+                <div class="section-header" style="margin-top:16px">
+                    <h3>Ingresos vs Gastos</h3>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-wrapper" style="height:180px">
+                        <canvas id="statsBarChart"></canvas>
+                    </div>
+                    <p class="chart-empty" id="stats-bar-empty">Sin datos en este período</p>
+                </div>
+
+                <div class="section-header">
+                    <h3>Gastos por Categoría</h3>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-wrapper" style="height:170px">
+                        <canvas id="statsDonutChart"></canvas>
+                    </div>
+                    <p class="chart-empty" id="stats-donut-empty">Sin gastos en este período</p>
+                </div>
+
+                <div class="section-header">
+                    <h3>Evolución Diaria</h3>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-wrapper" style="height:160px">
+                        <canvas id="statsTrendChart"></canvas>
+                    </div>
+                    <p class="chart-empty" id="stats-trend-empty">Sin datos en este período</p>
+                </div>
+
+                <div id="stats-projection" class="projection-card" style="display:none">
+                    <div class="projection-header">Proyección Mensual</div>
+                    <div class="projection-body" id="stats-projection-body"></div>
+                </div>
+
+                <div class="section-header">
+                    <h3>Principales Gastos</h3>
+                </div>
+                <div id="stats-top-expenses" class="transactions-list" style="margin-bottom:20px"></div>
+            </section>
+
+            <!-- Categories -->
+            <section id="page-categories" class="page">
+                <div class="section-header">
+                    <h2>Categorías</h2>
+                </div>
+                <p class="page-subtitle">Desglose de gastos</p>
+                <button class="manage-cats-btn" onclick="openCategoryManager()">Gestionar categorías</button>
+                <div id="categories-grid" class="categories-grid"></div>
+            </section>
+        </main>
+
+        <!-- Category Manager Modal -->
+        <div id="cat-manager" class="modal-overlay" onclick="if(event.target===this)closeCategoryManager()">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Gestionar Categorías</h3>
+                    <button class="modal-close" onclick="closeCategoryManager()">&times;</button>
+                </div>
+                <div class="cat-manager-tabs">
+                    <button class="cat-tab active" data-cat-type="expense" onclick="switchCatTab('expense')">Gastos</button>
+                    <button class="cat-tab" data-cat-type="income" onclick="switchCatTab('income')">Ingresos</button>
+                </div>
+                <div id="cat-manager-list" class="cat-manager-list"></div>
+                <div class="cat-manager-add">
+                    <input type="text" id="cat-manager-input" placeholder="Nueva categoría..." maxlength="20">
+                    <button onclick="addCategoryFromManager()">Agregar</button>
+                </div>
+            </div>
+        </div>
+
+        <nav id="bottom-nav" class="bottom-nav">
+            <button class="nav-btn active" data-page="dashboard" onclick="navigateTo('dashboard')">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                <span class="nav-label">Resumen</span>
+            </button>
+            <button class="nav-btn" data-page="transactions" onclick="navigateTo('transactions')">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                <span class="nav-label">Movimientos</span>
+            </button>
+            <button class="nav-btn nav-add-btn" data-page="add" onclick="navigateTo('add')">
+                <span class="add-icon">+</span>
+            </button>
+            <button class="nav-btn" data-page="categories" onclick="navigateTo('categories')">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                <span class="nav-label">Categorías</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- PIN Lock -->
+    <div id="pin-screen" class="pin-overlay">
+        <div class="pin-box">
+            <div class="pin-icon">🔒</div>
+            <h2 class="pin-title" id="pin-title">Ingresá tu PIN</h2>
+            <p class="pin-subtitle" id="pin-subtitle">4 dígitos</p>
+            <div class="pin-dots" id="pin-dots">
+                <span class="pin-dot"></span>
+                <span class="pin-dot"></span>
+                <span class="pin-dot"></span>
+                <span class="pin-dot"></span>
+            </div>
+            <p id="pin-error" class="pin-error"></p>
+            <div class="pin-keypad">
+                <button class="pin-key" onclick="pinPress('1')">1</button>
+                <button class="pin-key" onclick="pinPress('2')">2</button>
+                <button class="pin-key" onclick="pinPress('3')">3</button>
+                <button class="pin-key" onclick="pinPress('4')">4</button>
+                <button class="pin-key" onclick="pinPress('5')">5</button>
+                <button class="pin-key" onclick="pinPress('6')">6</button>
+                <button class="pin-key" onclick="pinPress('7')">7</button>
+                <button class="pin-key" onclick="pinPress('8')">8</button>
+                <button class="pin-key" onclick="pinPress('9')">9</button>
+                <button class="pin-key pin-key-empty"></button>
+                <button class="pin-key" onclick="pinPress('0')">0</button>
+                <button class="pin-key pin-key-del" onclick="pinDelete()">⌫</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Auth Screen -->
+    <div id="auth-screen" class="auth-overlay">
+        <div class="auth-box">
+            <div class="auth-icon">💰</div>
+            <h2 class="auth-title" id="auth-title">Iniciar sesión</h2>
+            <p class="auth-subtitle" id="auth-subtitle">Ingresá tu usuario y contraseña</p>
+            <div class="auth-tabs">
+                <button class="auth-tab active" data-auth="login" onclick="switchAuth('login')">Ingresar</button>
+                <button class="auth-tab" data-auth="register" onclick="switchAuth('register')">Crear cuenta</button>
+            </div>
+            <form id="auth-form" autocomplete="off">
+                <input type="text" id="auth-username" placeholder="Usuario" autocomplete="username" required>
+                <input type="password" id="auth-password" placeholder="Contraseña" autocomplete="current-password" required>
+                <button type="submit" id="auth-submit-btn">Ingresar</button>
+                <p class="auth-error" id="auth-error"></p>
+            </form>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

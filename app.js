@@ -1,0 +1,959 @@
+const DEFAULT_CATEGORIES = {
+    expense: [
+        { id: 'alimentacion', label: 'Alimentación', color: '#FF6B6B', icon: '🛒' },
+        { id: 'transporte', label: 'Transporte', color: '#6C63FF', icon: '🚗' },
+        { id: 'vivienda', label: 'Vivienda', color: '#FFC107', icon: '🏠' },
+        { id: 'servicios', label: 'Servicios', color: '#00B894', icon: '📱' },
+        { id: 'entretenimiento', label: 'Entretenimiento', color: '#FF8A65', icon: '🎬' },
+        { id: 'salud', label: 'Salud', color: '#E040FB', icon: '💊' },
+        { id: 'educacion', label: 'Educación', color: '#448AFF', icon: '📚' },
+        { id: 'impuestos', label: 'Impuestos', color: '#78909C', icon: '📋' },
+        { id: 'ropa', label: 'Ropa', color: '#F06292', icon: '👕' },
+        { id: 'otros', label: 'Otros', color: '#A0A4B8', icon: '📦' }
+    ],
+    income: [
+        { id: 'salario', label: 'Salario', color: '#00B894', icon: '💼' },
+        { id: 'freelance', label: 'Freelance', color: '#6C63FF', icon: '💻' },
+        { id: 'inversiones', label: 'Inversiones', color: '#FFC107', icon: '📈' },
+        { id: 'venta', label: 'Venta', color: '#FF8A65', icon: '🛍️' },
+        { id: 'otros', label: 'Otros', color: '#A0A4B8', icon: '📦' }
+    ]
+};
+
+let CATEGORY_MAP = {};
+let transactions = [];
+let customUserCategories = { expense: [], income: [] };
+let currentUser = null;
+let userPin = '';
+let expenseChart = null;
+let monthlyChart = null;
+let currentFilter = 'all';
+
+const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+// ─── API helper ─────────────────────────────────────────
+async function api(url, options = {}) {
+    const res = await fetch(url, {
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        ...options,
+        body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error de conexión');
+    return data;
+}
+
+// ─── Auth ───────────────────────────────────────────────
+async function checkSession() {
+    try {
+        const data = await api('/api/me');
+        if (data.user) {
+            currentUser = data.user;
+            await loadAllData();
+            if (userPin) {
+                showPin();
+            } else {
+                initApp();
+            }
+        } else {
+            showAuth();
+        }
+    } catch {
+        showAuth();
+    }
+}
+
+async function login(username, password) {
+    const data = await api('/api/login', { method: 'POST', body: { username, password } });
+    currentUser = data.username;
+    await loadAllData();
+    hideAuth();
+    if (userPin) {
+        showPin();
+    } else {
+        initApp();
+    }
+}
+
+async function register(username, password) {
+    const data = await api('/api/register', { method: 'POST', body: { username, password } });
+    currentUser = data.username;
+    await loadAllData();
+    hideAuth();
+    initApp();
+}
+
+async function logout() {
+    await api('/api/logout', { method: 'POST' });
+    currentUser = null;
+    transactions = [];
+    customUserCategories = { expense: [], income: [] };
+    userPin = '';
+    CATEGORY_MAP = {};
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('page-dashboard').classList.add('active');
+    document.querySelector('.nav-btn[data-page="dashboard"]').classList.add('active');
+    showAuth();
+}
+
+// ─── Data loading ───────────────────────────────────────
+async function loadAllData() {
+    const [txs, cats, pinData] = await Promise.all([
+        api('/api/transactions'),
+        api('/api/categories'),
+        api('/api/pin')
+    ]);
+    transactions = txs;
+    customUserCategories = cats;
+    userPin = pinData.pin || '';
+    rebuildCategoryMap();
+}
+
+async function addTransactionAPI(tx) {
+    const saved = await api('/api/transactions', { method: 'POST', body: tx });
+    transactions.push(saved);
+}
+
+async function deleteTransactionAPI(id) {
+    await api(`/api/transactions/${id}`, { method: 'DELETE' });
+    transactions = transactions.filter(tx => tx.id !== id);
+}
+
+async function addCategoryAPI(type, label, icon) {
+    const data = await api('/api/categories', { method: 'POST', body: { type, label, icon: icon || '📌' } });
+    const colors = { expense: '#A0A4B8', income: '#00B894' };
+    customUserCategories[type].push({ id: data.id, label, icon: icon || '📌', color: colors[type] });
+    rebuildCategoryMap();
+}
+
+async function removeCategoryAPI(type, id) {
+    await api(`/api/categories/${type}/${id}`, { method: 'DELETE' });
+    customUserCategories[type] = customUserCategories[type].filter(c => c.id !== id);
+    rebuildCategoryMap();
+}
+
+async function setUserPin(pin) {
+    await api('/api/pin', { method: 'POST', body: { pin } });
+    userPin = pin;
+}
+
+async function removeUserPin() {
+    await api('/api/pin', { method: 'DELETE' });
+    userPin = '';
+}
+
+// ─── PIN Lock ───────────────────────────────────────────
+let pinBuffer = '';
+let pinMode = '';
+
+function pinPress(n) {
+    if (pinBuffer.length >= 4) return;
+    pinBuffer += n;
+    updatePinDots();
+    if (pinBuffer.length === 4) {
+        setTimeout(checkPin, 100);
+    }
+}
+
+function pinDelete() {
+    if (pinBuffer.length > 0) { pinBuffer = pinBuffer.slice(0, -1); updatePinDots(); }
+}
+
+function updatePinDots() {
+    document.querySelectorAll('.pin-dot').forEach((dot, i) => {
+        dot.classList.toggle('filled', i < pinBuffer.length);
+    });
+    document.getElementById('pin-error').textContent = '';
+}
+
+function checkPin() {
+    if (!userPin) {
+        if (!pinMode) {
+            pinMode = 'create';
+            document.getElementById('pin-title').textContent = 'Creá tu PIN';
+            document.getElementById('pin-subtitle').textContent = '4 dígitos';
+            pinBuffer = '';
+            updatePinDots();
+            return;
+        }
+        if (pinMode === 'create') {
+            setUserPin(pinBuffer);
+            pinBuffer = '';
+            hidePin();
+            updatePinBtn();
+            initApp();
+            return;
+        }
+    } else {
+        if (pinBuffer === userPin) {
+            pinBuffer = '';
+            hidePin();
+            initApp();
+        } else {
+            document.getElementById('pin-error').textContent = 'PIN incorrecto';
+            pinBuffer = '';
+            updatePinDots();
+        }
+    }
+}
+
+function showPin() {
+    document.getElementById('pin-screen').classList.remove('hidden');
+    if (userPin) {
+        pinMode = 'unlock';
+        document.getElementById('pin-title').textContent = 'Ingresá tu PIN';
+        document.getElementById('pin-subtitle').textContent = '4 dígitos';
+    } else {
+        pinMode = 'create';
+        document.getElementById('pin-title').textContent = 'Creá tu PIN';
+        document.getElementById('pin-subtitle').textContent = 'elegí 4 dígitos';
+    }
+    pinBuffer = '';
+    updatePinDots();
+    document.getElementById('pin-error').textContent = '';
+}
+
+function hidePin() {
+    document.getElementById('pin-screen').classList.add('hidden');
+}
+
+function togglePin() {
+    if (userPin) {
+        if (confirm('¿Desactivar el bloqueo por PIN?')) {
+            removeUserPin();
+            updatePinBtn();
+            showToast('PIN desactivado');
+        }
+    } else {
+        pinMode = 'create';
+        document.getElementById('pin-title').textContent = 'Creá tu PIN';
+        document.getElementById('pin-subtitle').textContent = 'elegí 4 dígitos';
+        pinBuffer = '';
+        updatePinDots();
+        document.getElementById('pin-error').textContent = '';
+        document.getElementById('pin-screen').classList.remove('hidden');
+    }
+}
+
+// ─── Auth UI ────────────────────────────────────────────
+function showAuth() {
+    document.getElementById('auth-screen').classList.remove('hidden');
+    document.getElementById('app').classList.add('hidden');
+}
+
+function hideAuth() {
+    document.getElementById('auth-screen').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+}
+
+let authMode = 'login';
+
+function switchAuth(mode) {
+    authMode = mode;
+    document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+    document.querySelector('.auth-tab[data-auth="' + mode + '"]').classList.add('active');
+    document.getElementById('auth-error').textContent = '';
+    document.getElementById('auth-form').querySelector('input').value = '';
+    document.getElementById('auth-password').value = '';
+    const btn = document.getElementById('auth-submit-btn');
+    if (mode === 'login') {
+        btn.textContent = 'Ingresar';
+        document.getElementById('auth-title').textContent = 'Iniciar sesión';
+        document.getElementById('auth-subtitle').textContent = 'Ingresá tu usuario y contraseña';
+    } else {
+        btn.textContent = 'Crear cuenta';
+        document.getElementById('auth-title').textContent = 'Crear cuenta';
+        document.getElementById('auth-subtitle').textContent = 'Elegí un usuario y contraseña';
+    }
+}
+
+async function handleAuth(e) {
+    e.preventDefault();
+    const username = document.getElementById('auth-username').value.trim();
+    const password = document.getElementById('auth-password').value;
+    const errorEl = document.getElementById('auth-error');
+    const btn = document.getElementById('auth-submit-btn');
+    btn.disabled = true;
+    btn.textContent = '...';
+    errorEl.textContent = '';
+    try {
+        if (authMode === 'login') {
+            await login(username, password);
+        } else {
+            await register(username, password);
+        }
+    } catch (err) {
+        errorEl.textContent = err.message;
+    }
+    btn.disabled = false;
+    btn.textContent = authMode === 'login' ? 'Ingresar' : 'Crear cuenta';
+}
+
+// ─── Categories ────────────────────────────────────────
+function getCustomCategories() {
+    return customUserCategories;
+}
+
+function getAllCategories(type) {
+    const defaults = DEFAULT_CATEGORIES[type];
+    const custom = customUserCategories[type] || [];
+    return [...defaults, ...custom];
+}
+
+function rebuildCategoryMap() {
+    CATEGORY_MAP = {};
+    [...getAllCategories('expense'), ...getAllCategories('income')].forEach(c => { CATEGORY_MAP[c.id] = c; });
+}
+
+function addCategory(type, label, icon) {
+    addCategoryAPI(type, label, icon);
+}
+
+function removeCategory(type, id) {
+    removeCategoryAPI(type, id);
+}
+
+rebuildCategoryMap();
+
+// ─── Init ──────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('auth-form').addEventListener('submit', handleAuth);
+    document.getElementById('auth-username').addEventListener('keydown', e => {
+        if (e.key === 'Enter') document.getElementById('auth-password').focus();
+    });
+    document.getElementById('auth-password').addEventListener('keydown', e => {
+        if (e.key === 'Enter') document.getElementById('auth-form').dispatchEvent(new Event('submit'));
+    });
+    document.getElementById('cat-manager-input').addEventListener('keydown', e => {
+        if (e.key === 'Enter') addCategoryFromManager();
+    });
+    checkSession();
+});
+
+function initApp() {
+    populateCategories();
+    setDefaultDate();
+    setupForm();
+    setupTypeToggle();
+    updateDate();
+    updateAll();
+    setPeriod('this-month');
+}
+
+// ─── UI ─────────────────────────────────────────────────
+function updateDate() {
+    const now = new Date();
+    document.getElementById('current-date').textContent =
+        now.getDate() + ' ' + MONTHS[now.getMonth()] + ' ' + now.getFullYear();
+    document.getElementById('month-label').textContent =
+        MONTHS[now.getMonth()] + ' ' + now.getFullYear();
+    const userEl = document.getElementById('current-user');
+    if (userEl && currentUser) userEl.textContent = currentUser;
+}
+
+function setDefaultDate() {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    document.getElementById('tx-date').value = y + '-' + m + '-' + d;
+}
+
+function populateCategories() {
+    const select = document.getElementById('tx-category');
+    const currentType = document.querySelector('.type-btn.active').dataset.type;
+    select.innerHTML = '<option value="">Seleccionar</option>';
+    getAllCategories(currentType).forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = c.icon + ' ' + c.label;
+        select.appendChild(opt);
+    });
+    const mostUsed = getMostUsedCategory(currentType);
+    if (mostUsed) select.value = mostUsed;
+}
+
+function getMostUsedCategory(type) {
+    const usage = {};
+    transactions.filter(tx => tx.type === type).forEach(tx => { usage[tx.category] = (usage[tx.category] || 0) + 1; });
+    const entries = Object.entries(usage);
+    return entries.length ? entries.sort((a, b) => b[1] - a[1])[0][0] : null;
+}
+
+function setupTypeToggle() {
+    document.querySelectorAll('.type-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            populateCategories();
+            document.getElementById('tx-amount').focus();
+        });
+    });
+}
+
+function setupForm() {
+    document.getElementById('transaction-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const type = document.querySelector('.type-btn.active').dataset.type;
+        const category = document.getElementById('tx-category').value;
+        const amount = parseFloat(document.getElementById('tx-amount').value);
+        const description = document.getElementById('tx-description').value.trim();
+        const date = document.getElementById('tx-date').value;
+        if (!category || !amount || !description || !date) return;
+        const tx = { type, category, amount, description, date };
+        try {
+            await addTransactionAPI(tx);
+        } catch (err) {
+            showToast('Error al guardar: ' + err.message);
+            return;
+        }
+        e.target.reset();
+        setDefaultDate();
+        document.querySelector('.type-btn.expense-type').classList.add('active');
+        document.querySelector('.type-btn.income-type').classList.remove('active');
+        populateCategories();
+        updateAll();
+        showToast('Movimiento guardado');
+        navigateTo('dashboard');
+    });
+}
+
+function navigateTo(page) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('page-' + page).classList.add('active');
+    const navBtn = document.querySelector('.nav-btn[data-page="' + page + '"]');
+    if (navBtn) navBtn.classList.add('active');
+    document.getElementById('main-content').scrollTop = 0;
+    document.getElementById('app').classList.toggle('add-mode', page === 'add');
+    if (page === 'dashboard') updateDashboard();
+    if (page === 'stats') renderStats();
+    if (page === 'add') {
+        populateCategories();
+        setDefaultDate();
+        document.getElementById('tx-amount').focus();
+        document.getElementById('main-content').scrollTo(0, 0);
+    }
+    if (page === 'categories') renderCategories();
+}
+
+function filterTransactions(filter) {
+    currentFilter = filter;
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector('.filter-btn[data-filter="' + filter + '"]').classList.add('active');
+    renderTransactions();
+}
+
+function updateAll() {
+    updateDashboard();
+    renderTransactions();
+    renderCategories();
+}
+
+// ─── Dashboard ──────────────────────────────────────────
+function updateDashboard() {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    const monthTxs = transactions.filter(tx => {
+        const d = parseDate(tx.date);
+        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    });
+    const totalIncome = transactions.filter(tx => tx.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const totalExpense = transactions.filter(tx => tx.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const balance = totalIncome - totalExpense;
+    document.getElementById('total-balance').textContent = formatCurrency(balance);
+    document.getElementById('total-balance').style.color = balance >= 0 ? '#00B894' : '#FF6B6B';
+    document.getElementById('quick-income').textContent = formatCurrency(totalIncome);
+    document.getElementById('quick-expense').textContent = formatCurrency(totalExpense);
+    document.getElementById('quick-count').textContent = transactions.length;
+    updateExpenseChart(monthTxs);
+    updateMonthlyChart();
+    renderRecentTransactions();
+}
+
+function updateExpenseChart(monthTxs) {
+    if (typeof Chart === 'undefined') return;
+    const expenseTxs = monthTxs.filter(tx => tx.type === 'expense');
+    const emptyMsg = document.getElementById('expense-chart-empty');
+    const canvas = document.getElementById('expenseChart');
+    const ctx = canvas.getContext('2d');
+    if (expenseChart) { expenseChart.destroy(); expenseChart = null; }
+    if (expenseTxs.length === 0) { canvas.style.display = 'none'; emptyMsg.style.display = 'block'; return; }
+    canvas.style.display = 'block'; emptyMsg.style.display = 'none';
+    const byCategory = {};
+    expenseTxs.forEach(tx => { byCategory[tx.category] = (byCategory[tx.category] || 0) + tx.amount; });
+    const sorted = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
+    const labels = sorted.map(([id]) => { const c = CATEGORY_MAP[id]; return c ? c.label : id; });
+    const data = sorted.map(([, v]) => v);
+    const colors = sorted.map(([id]) => { const c = CATEGORY_MAP[id]; return c ? c.color : '#A0A4B8'; });
+    expenseChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 3, borderColor: '#fff' }] },
+        options: { responsive: true, maintainAspectRatio: false, cutout: '68%', plugins: { legend: { position: 'bottom', labels: { padding: 12, usePointStyle: true, pointStyle: 'circle', font: { size: 11 }, color: '#636e72' } } } }
+    });
+}
+
+function updateMonthlyChart() {
+    if (typeof Chart === 'undefined') return;
+    const canvas = document.getElementById('monthlyChart');
+    const ctx = canvas.getContext('2d');
+    const emptyMsg = document.getElementById('monthly-chart-empty');
+    if (monthlyChart) { monthlyChart.destroy(); monthlyChart = null; }
+    const now = new Date();
+    const months = [];
+    for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        months.push({ year: d.getFullYear(), month: d.getMonth(), label: MONTHS[d.getMonth()].slice(0, 3) });
+    }
+    const incomes = months.map(m => transactions.filter(tx => { const d = parseDate(tx.date); return tx.type === 'income' && d.getMonth() === m.month && d.getFullYear() === m.year; }).reduce((s, t) => s + t.amount, 0));
+    const expenses = months.map(m => transactions.filter(tx => { const d = parseDate(tx.date); return tx.type === 'expense' && d.getMonth() === m.month && d.getFullYear() === m.year; }).reduce((s, t) => s + t.amount, 0));
+    const hasData = incomes.some(v => v > 0) || expenses.some(v => v > 0);
+    if (!hasData) { canvas.style.display = 'none'; emptyMsg.style.display = 'block'; return; }
+    canvas.style.display = 'block'; emptyMsg.style.display = 'none';
+    monthlyChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: months.map(m => m.label),
+            datasets: [
+                { label: 'Ingresos', data: incomes, backgroundColor: 'rgba(0,185,148,0.85)', borderRadius: 4, barPercentage: 0.35 },
+                { label: 'Gastos', data: expenses, backgroundColor: 'rgba(255,107,107,0.85)', borderRadius: 4, barPercentage: 0.35 }
+            ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { font: { size: 11 }, color: '#b2bec3' } }, y: { grid: { color: '#eef0f5' }, ticks: { font: { size: 10 }, color: '#b2bec3', callback: v => '$' + (v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v) } } } }
+    });
+}
+
+function renderRecentTransactions() {
+    const container = document.getElementById('recent-transactions');
+    const sorted = [...transactions].sort((a, b) => parseDate(b.date) - parseDate(a.date));
+    const recent = sorted.slice(0, 5);
+    container.innerHTML = recent.length
+        ? recent.map(tx => renderTransactionHTML(tx)).join('')
+        : '<p style="text-align:center;color:var(--text-muted);padding:24px 0;font-size:14px">No hay movimientos aún</p>';
+}
+
+// ─── Transactions list ─────────────────────────────────
+function renderTransactions() {
+    const container = document.getElementById('all-transactions');
+    let filtered = [...transactions];
+    if (currentFilter === 'income') filtered = filtered.filter(tx => tx.type === 'income');
+    else if (currentFilter === 'expense') filtered = filtered.filter(tx => tx.type === 'expense');
+    filtered.sort((a, b) => parseDate(b.date) - parseDate(a.date));
+    if (!filtered.length) {
+        container.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:40px 0;font-size:14px">No hay movimientos</p>';
+        return;
+    }
+    let currentDate = '';
+    let html = '';
+    filtered.forEach(tx => {
+        if (tx.date !== currentDate) {
+            currentDate = tx.date;
+            const d = parseDate(tx.date);
+            const label = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+            html += '<div style="font-size:12px;font-weight:600;color:var(--text-muted);padding:8px 0 4px;text-transform:capitalize">' + label + '</div>';
+        }
+        html += renderTransactionHTML(tx);
+    });
+    container.innerHTML = html;
+}
+
+function renderTransactionHTML(tx) {
+    const cat = CATEGORY_MAP[tx.category] || { label: tx.category, icon: '📦' };
+    const prefix = tx.type === 'expense' ? '-' : '+';
+    return '<div class="transaction-item" data-id="' + tx.id + '">' +
+        '<div class="transaction-cat-icon ' + tx.type + '"><span>' + cat.icon + '</span></div>' +
+        '<div class="transaction-info">' +
+            '<div class="transaction-desc">' + escapeHTML(tx.description) + '</div>' +
+            '<div class="transaction-meta">' + formatDate(tx.date) + ' <span class="transaction-category">' + cat.label + '</span></div>' +
+        '</div>' +
+        '<span class="transaction-amount ' + tx.type + '">' + prefix + formatCurrency(tx.amount) + '</span>' +
+        '<button class="delete-btn" onclick="deleteTransaction(' + tx.id + ')" title="Eliminar">&times;</button>' +
+    '</div>';
+}
+
+async function deleteTransaction(id) {
+    if (!confirm('¿Eliminar este movimiento?')) return;
+    try {
+        await deleteTransactionAPI(id);
+    } catch (err) {
+        showToast('Error al eliminar: ' + err.message);
+        return;
+    }
+    updateAll();
+    showToast('Movimiento eliminado');
+}
+
+// ─── Categories page ───────────────────────────────────
+function renderCategories() {
+    const container = document.getElementById('categories-grid');
+    const expenseTxs = transactions.filter(tx => tx.type === 'expense');
+    const totalExpense = expenseTxs.reduce((s, t) => s + t.amount, 0);
+    if (!expenseTxs.length) {
+        container.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:40px 0;font-size:14px">Sin gastos registrados</p>';
+        return;
+    }
+    const byCategory = {};
+    expenseTxs.forEach(tx => { byCategory[tx.category] = (byCategory[tx.category] || 0) + tx.amount; });
+    const sorted = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
+    const maxAmount = sorted[0][1];
+    container.innerHTML = sorted.map(([id, amount]) => {
+        const cat = CATEGORY_MAP[id] || { label: id, color: '#A0A4B8' };
+        const percent = ((amount / totalExpense) * 100).toFixed(1);
+        const width = (amount / maxAmount) * 100;
+        return '<div class="category-item">' +
+            '<div class="category-header">' +
+                '<span class="category-name"><span class="category-dot" style="background:' + cat.color + '"></span> ' + cat.icon + ' ' + cat.label + '</span>' +
+                '<span class="category-amount">' + formatCurrency(amount) + '</span>' +
+            '</div>' +
+            '<div class="category-bar"><div class="category-bar-fill" style="width:' + width + '%;background:' + cat.color + '"></div></div>' +
+            '<span class="category-percent">' + percent + '% del total</span>' +
+        '</div>';
+    }).join('');
+}
+
+// ─── Stats ──────────────────────────────────────────────
+let statsBarChart = null, statsDonutChart = null, statsTrendChart = null;
+let statsFrom = '', statsTo = '';
+let statsPreset = 'this-month';
+
+function toLocalDateStr(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function parseDate(str) {
+    const [y, m, d] = str.split('-').map(Number);
+    return new Date(y, m - 1, d);
+}
+
+function getDefaultRange(preset) {
+    const now = new Date();
+    const y = now.getFullYear(), m = now.getMonth();
+    switch (preset) {
+        case 'this-month': return { from: toLocalDateStr(new Date(y, m, 1)), to: toLocalDateStr(new Date(y, m + 1, 0)) };
+        case 'last-month': return { from: toLocalDateStr(new Date(y, m - 1, 1)), to: toLocalDateStr(new Date(y, m, 0)) };
+        case 'last-3': return { from: toLocalDateStr(new Date(y, m - 2, 1)), to: toLocalDateStr(new Date(y, m + 1, 0)) };
+        case 'this-year': return { from: toLocalDateStr(new Date(y, 0, 1)), to: toLocalDateStr(new Date(y, 11, 31)) };
+    }
+}
+
+function setPeriod(preset) {
+    statsPreset = preset;
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector('.preset-btn[data-period="' + preset + '"]').classList.add('active');
+    const range = getDefaultRange(preset);
+    statsFrom = range.from;
+    statsTo = range.to;
+    document.getElementById('stats-from').value = statsFrom;
+    document.getElementById('stats-to').value = statsTo;
+    renderStats();
+}
+
+function setCustomRange() {
+    const from = document.getElementById('stats-from').value;
+    const to = document.getElementById('stats-to').value;
+    if (!from || !to) return;
+    statsFrom = from;
+    statsTo = to;
+    statsPreset = 'custom';
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+    renderStats();
+}
+
+function getStatsTxs() {
+    if (!statsFrom || !statsTo) return [];
+    const from = parseDate(statsFrom);
+    const to = new Date(parseDate(statsTo).getTime() + 86400000 - 1);
+    return transactions.filter(tx => {
+        const d = parseDate(tx.date);
+        return d >= from && d <= to;
+    });
+}
+
+function renderStats() {
+    const txs = getStatsTxs();
+    updateStatsSummary(txs);
+    updateStatsBarChart(txs);
+    updateStatsDonutChart(txs);
+    updateStatsTrendChart(txs);
+    updateStatsProjection(txs);
+    renderTopExpenses(txs);
+}
+
+function updateStatsSummary(txs) {
+    const income = txs.filter(tx => tx.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const expense = txs.filter(tx => tx.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const balance = income - expense;
+    const days = statsFrom && statsTo ? Math.round((parseDate(statsTo) - parseDate(statsFrom)) / 86400000) + 1 : 1;
+    const dailyAvg = days > 0 ? expense / days : 0;
+    const dailyIncome = days > 0 ? income / days : 0;
+    document.getElementById('stats-income').textContent = formatCurrency(income);
+    document.getElementById('stats-income').style.color = '#00B894';
+    document.getElementById('stats-expense').textContent = formatCurrency(expense);
+    document.getElementById('stats-expense').style.color = '#FF6B6B';
+    document.getElementById('stats-balance').textContent = formatCurrency(balance);
+    document.getElementById('stats-balance').style.color = balance >= 0 ? '#00B894' : '#FF6B6B';
+    document.getElementById('stats-daily').textContent = formatCurrency(Math.round(dailyAvg));
+    document.getElementById('stats-daily').style.color = dailyAvg > 0 ? 'var(--expense)' : 'var(--text)';
+    document.getElementById('stats-daily-income').textContent = formatCurrency(Math.round(dailyIncome));
+    document.getElementById('stats-daily-income').style.color = dailyIncome > 0 ? '#00B894' : 'var(--text)';
+    document.getElementById('stats-count').textContent = txs.length;
+}
+
+function updateStatsBarChart(txs) {
+    if (typeof Chart === 'undefined') return;
+    const canvas = document.getElementById('statsBarChart');
+    const ctx = canvas.getContext('2d');
+    const emptyMsg = document.getElementById('stats-bar-empty');
+    if (statsBarChart) { statsBarChart.destroy(); statsBarChart = null; }
+    const totalDays = statsFrom && statsTo ? Math.round((parseDate(statsTo) - parseDate(statsFrom)) / 86400000) + 1 : 1;
+    const groupByMonth = totalDays > 60;
+    const groups = {};
+    txs.forEach(tx => {
+        const d = parseDate(tx.date);
+        let key;
+        if (groupByMonth) {
+            key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+        } else {
+            key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-S' + Math.ceil(d.getDate() / 7);
+        }
+        if (!groups[key]) groups[key] = { income: 0, expense: 0, label: '' };
+        if (tx.type === 'income') groups[key].income += tx.amount; else groups[key].expense += tx.amount;
+    });
+    const sortedKeys = Object.keys(groups).sort();
+    if (groupByMonth) {
+        sortedKeys.forEach(k => { const p = k.split('-'); groups[k].label = MONTHS[parseInt(p[1]) - 1].slice(0, 3) + ' ' + p[0]; });
+    } else {
+        sortedKeys.forEach(k => { const m = k.match(/-S(\d)/); if (m) groups[k].label = 'Sem ' + m[1]; });
+    }
+    const hasData = sortedKeys.some(k => groups[k].income > 0 || groups[k].expense > 0);
+    if (!hasData || !sortedKeys.length) { canvas.style.display = 'none'; emptyMsg.style.display = 'block'; return; }
+    canvas.style.display = 'block'; emptyMsg.style.display = 'none';
+    statsBarChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: sortedKeys.map(k => groups[k].label),
+            datasets: [
+                { label: 'Ingresos', data: sortedKeys.map(k => groups[k].income), backgroundColor: 'rgba(0,185,148,0.85)', borderRadius: 3, barPercentage: 0.3 },
+                { label: 'Gastos', data: sortedKeys.map(k => groups[k].expense), backgroundColor: 'rgba(255,107,107,0.85)', borderRadius: 3, barPercentage: 0.3 }
+            ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#b2bec3' } }, y: { grid: { color: '#eef0f5' }, ticks: { font: { size: 9 }, color: '#b2bec3', callback: v => '$' + (v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v) } } } }
+    });
+}
+
+function updateStatsDonutChart(txs) {
+    if (typeof Chart === 'undefined') return;
+    const canvas = document.getElementById('statsDonutChart');
+    const ctx = canvas.getContext('2d');
+    const emptyMsg = document.getElementById('stats-donut-empty');
+    if (statsDonutChart) { statsDonutChart.destroy(); statsDonutChart = null; }
+    const expenseTxs = txs.filter(tx => tx.type === 'expense');
+    if (!expenseTxs.length) { canvas.style.display = 'none'; emptyMsg.style.display = 'block'; return; }
+    canvas.style.display = 'block'; emptyMsg.style.display = 'none';
+    const byCat = {};
+    expenseTxs.forEach(tx => { byCat[tx.category] = (byCat[tx.category] || 0) + tx.amount; });
+    const sorted = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
+    const labels = sorted.map(([id]) => { const c = CATEGORY_MAP[id]; return c ? c.label : id; });
+    const data = sorted.map(([, v]) => v);
+    const colors = sorted.map(([id]) => { const c = CATEGORY_MAP[id]; return c ? c.color : '#A0A4B8'; });
+    statsDonutChart = new Chart(ctx, {
+        type: 'doughnut', data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 3, borderColor: '#fff' }] },
+        options: { responsive: true, maintainAspectRatio: false, cutout: '65%', plugins: { legend: { position: 'bottom', labels: { padding: 10, usePointStyle: true, pointStyle: 'circle', font: { size: 10 }, color: '#636e72' } } } }
+    });
+}
+
+function updateStatsTrendChart(txs) {
+    if (typeof Chart === 'undefined') return;
+    const canvas = document.getElementById('statsTrendChart');
+    const ctx = canvas.getContext('2d');
+    const emptyMsg = document.getElementById('stats-trend-empty');
+    if (statsTrendChart) { statsTrendChart.destroy(); statsTrendChart = null; }
+    if (!txs.length) { canvas.style.display = 'none'; emptyMsg.style.display = 'block'; return; }
+    canvas.style.display = 'block'; emptyMsg.style.display = 'none';
+    const daily = {};
+    const from = parseDate(statsFrom);
+    const to = parseDate(statsTo);
+    for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+        daily[toLocalDateStr(d)] = 0;
+    }
+    let preBalance = 0;
+    const rangeStart = parseDate(statsFrom);
+    transactions.forEach(tx => {
+        const d = parseDate(tx.date);
+        if (d < rangeStart) { preBalance += tx.type === 'income' ? tx.amount : -tx.amount; }
+    });
+    const dailyDelta = {};
+    txs.forEach(tx => { dailyDelta[tx.date] = (dailyDelta[tx.date] || 0) + (tx.type === 'income' ? tx.amount : -tx.amount); });
+    const dates = Object.keys(daily).sort();
+    let cum = preBalance;
+    const values = dates.map(d => { cum += dailyDelta[d] || 0; return cum; });
+    const labels = dates.map(d => { const dt = parseDate(d); return dt.getDate() + '/' + (dt.getMonth() + 1); });
+    statsTrendChart = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets: [{ label: 'Balance', data: values, borderColor: '#6C63FF', backgroundColor: 'rgba(108,99,255,0.08)', fill: true, tension: 0.3, pointRadius: 2, pointBackgroundColor: '#6C63FF', borderWidth: 2 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#b2bec3', maxTicksLimit: 10 } }, y: { grid: { color: '#eef0f5' }, ticks: { font: { size: 9 }, color: '#b2bec3', callback: v => '$' + (v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v) } } } }
+    });
+}
+
+function updateStatsProjection(txs) {
+    const card = document.getElementById('stats-projection');
+    const body = document.getElementById('stats-projection-body');
+    const now = new Date();
+    const isCurrentMonth = statsPreset === 'this-month';
+    if (!isCurrentMonth || !txs.length) { card.style.display = 'none'; return; }
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const dayOfMonth = now.getDate();
+    const daysLeft = daysInMonth - dayOfMonth;
+    const daysElapsed = dayOfMonth;
+    const monthExpense = txs.filter(tx => tx.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const monthIncome = txs.filter(tx => tx.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const dailyRate = daysElapsed > 0 ? monthExpense / daysElapsed : 0;
+    const projectedExpense = Math.round(dailyRate * daysInMonth);
+    const remainingBudget = Math.round((monthIncome - monthExpense) + dailyRate * daysLeft);
+    const projectedBalance = monthIncome - projectedExpense;
+    const cc = v => v >= 0 ? 'highlight-green' : 'highlight-red';
+    body.innerHTML = '<div>Día <strong>' + dayOfMonth + '</strong> de <strong>' + daysInMonth + '</strong> &middot; <strong>' + daysLeft + '</strong> días restantes</div>' +
+        '<div>Gasto promedio diario: <strong>' + formatCurrency(Math.round(dailyRate)) + '</strong></div>' +
+        '<div>Proyección fin de mes: <strong>' + formatCurrency(projectedExpense) + '</strong> en gastos</div>' +
+        '<div>Balance proyectado: <strong class="' + cc(projectedBalance) + '">' + formatCurrency(projectedBalance) + '</strong></div>' +
+        '<div style="margin-top:6px;padding-top:8px;border-top:1px solid var(--border)">' +
+        (remainingBudget >= 0
+            ? 'Te quedan <strong class="highlight-green">' + formatCurrency(remainingBudget) + '</strong> para el resto del mes'
+            : 'Estás <strong class="highlight-red">' + formatCurrency(Math.abs(remainingBudget)) + '</strong> por encima de tu presupuesto') +
+        '</div>';
+    card.style.display = 'block';
+}
+
+function renderTopExpenses(txs) {
+    const container = document.getElementById('stats-top-expenses');
+    const expenses = txs.filter(tx => tx.type === 'expense').sort((a, b) => b.amount - a.amount).slice(0, 10);
+    if (!expenses.length) {
+        container.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:16px 0;font-size:13px">Sin gastos en este período</p>';
+        return;
+    }
+    container.innerHTML = expenses.map(tx => {
+        const cat = CATEGORY_MAP[tx.category] || { label: tx.category, icon: '📦' };
+        return '<div class="transaction-item">' +
+            '<div class="transaction-cat-icon expense"><span>' + cat.icon + '</span></div>' +
+            '<div class="transaction-info">' +
+                '<div class="transaction-desc">' + escapeHTML(tx.description) + '</div>' +
+                '<div class="transaction-meta">' + formatDate(tx.date) + ' &middot; ' + cat.label + '</div>' +
+            '</div>' +
+            '<span class="transaction-amount expense">-' + formatCurrency(tx.amount) + '</span>' +
+        '</div>';
+    }).join('');
+}
+
+// ─── Utils ──────────────────────────────────────────────
+function formatCurrency(value) {
+    return '$' + Math.round(value).toLocaleString('es-AR');
+}
+
+function formatDate(dateStr) {
+    const d = parseDate(dateStr);
+    return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+}
+
+function escapeHTML(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function showToast(msg) {
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => toast.classList.remove('show'), 2200);
+}
+
+// ─── Category Manager ───────────────────────────────────
+let catManagerType = 'expense';
+
+function openCategoryManager() {
+    document.getElementById('cat-manager').classList.add('active');
+    catManagerType = 'expense';
+    document.querySelectorAll('.cat-tab').forEach(t => t.classList.remove('active'));
+    document.querySelector('.cat-tab[data-cat-type="expense"]').classList.add('active');
+    renderCatManager();
+    document.getElementById('cat-manager-input').value = '';
+    document.getElementById('cat-manager-input').focus();
+}
+
+function closeCategoryManager() {
+    document.getElementById('cat-manager').classList.remove('active');
+}
+
+function switchCatTab(type) {
+    catManagerType = type;
+    document.querySelectorAll('.cat-tab').forEach(t => t.classList.remove('active'));
+    document.querySelector('.cat-tab[data-cat-type="' + type + '"]').classList.add('active');
+    renderCatManager();
+    document.getElementById('cat-manager-input').value = '';
+    document.getElementById('cat-manager-input').focus();
+}
+
+function renderCatManager() {
+    const container = document.getElementById('cat-manager-list');
+    const defaults = DEFAULT_CATEGORIES[catManagerType].map(c => c.id);
+    const cats = getAllCategories(catManagerType);
+    container.innerHTML = cats.map(c => {
+        const isDefault = defaults.includes(c.id);
+        const inUse = transactions.filter(tx => tx.type === catManagerType && tx.category === c.id).length;
+        return '<div class="cat-manager-item">' +
+            '<span class="cat-info"><span class="cat-dot" style="background:' + c.color + '"></span> ' + c.icon + ' ' + c.label + (isDefault ? '<span style="font-size:10px;color:var(--text-muted);margin-left:4px">fija</span>' : '') + '</span>' +
+            (isDefault
+                ? '<button class="cat-remove" disabled title="No se puede eliminar"></button>'
+                : '<button class="cat-remove" onclick="removeCat(\'' + catManagerType + '\',\'' + c.id + '\')" title="' + (inUse > 0 ? inUse + ' movimiento(s) asociado(s)' : 'Eliminar') + '">&times;</button>') +
+        '</div>';
+    }).join('');
+}
+
+function removeCat(type, id) {
+    const inUse = transactions.filter(tx => tx.type === type && tx.category === id).length;
+    if (!confirm(inUse > 0 ? 'Hay ' + inUse + ' movimiento(s) con esta categoría. ¿Eliminar de todas formas?' : '¿Eliminar esta categoría?')) return;
+    removeCategory(type, id);
+    renderCatManager();
+    populateCategories();
+    updateAll();
+    showToast('Categoría eliminada');
+}
+
+function addCategoryFromManager() {
+    const input = document.getElementById('cat-manager-input');
+    const label = input.value.trim();
+    if (!label || label.length < 2) return;
+    addCategory(catManagerType, label);
+    input.value = '';
+    renderCatManager();
+    populateCategories();
+    updateAll();
+    showToast('Categoría agregada');
+    input.focus();
+}
+
+// ─── PIN toggle in header ──────────────────────────────
+function updatePinBtn() {
+    const btn = document.querySelector('.pin-toggle-btn');
+    if (btn) {
+        btn.style.opacity = userPin ? '1' : '0.5';
+    }
+}
+
+(function addPinBtn() {
+    const headerTop = document.querySelector('.header-top');
+    if (headerTop) {
+        const btn = document.createElement('button');
+        btn.className = 'pin-toggle-btn';
+        btn.textContent = '🔒';
+        btn.style.cssText = 'background:none;border:none;font-size:16px;cursor:pointer;padding:0 0 0 8px';
+        btn.title = 'Configurar PIN';
+        btn.onclick = togglePin;
+        headerTop.appendChild(btn);
+        updatePinBtn();
+    }
+})();
