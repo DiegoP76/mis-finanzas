@@ -1,0 +1,7 @@
+{
+  "name": "mis-finanzas",
+  "version": "2.0.0",
+  "description": "App web de finanzas personales",
+  "private": true,
+  "scripts": {}
+}
