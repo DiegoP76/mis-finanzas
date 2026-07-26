@@ -3,7 +3,6 @@ const session = require('express-session');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
-const { generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse } = require('@simplewebauthn/server');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -11,16 +10,13 @@ const DATA_DIR = path.join(__dirname, 'data');
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-// In-memory WebAuthn challenges (expire on server restart)
-const webauthnChallenges = {};
-
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '.')));
 app.use(session({
     secret: process.env.SESSION_SECRET || 'mis-finanzas-secret-dev',
     resave: false,
     saveUninitialized: false,
-    cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 }
+    cookie: { secure: false, maxAge: 30 * 24 * 60 * 60 * 1000 }
 }));
 
 function getUsers() {
@@ -38,7 +34,7 @@ function getUserFile(username) {
 
 function getUserData(username) {
     try { return JSON.parse(fs.readFileSync(getUserFile(username), 'utf-8')); }
-    catch { return { transactions: [], customCategories: { expense: [], income: [] }, pin: '' }; }
+    catch { return { transactions: [], customCategories: { expense: [], income: [] }, pattern: '' }; }
 }
 
 function saveUserData(username, data) {
@@ -54,13 +50,13 @@ function requireAuth(req, res, next) {
 app.post('/api/register', (req, res) => {
     const { username, password } = req.body;
     if (!username || !password) return res.status(400).json({ error: 'Usuario y contraseña requeridos' });
-    if (username.length < 3) return res.status(400).json({ error: 'El usuario debe tener al menos 3 caracteres' });
-    if (password.length < 4) return res.status(400).json({ error: 'La contraseña debe tener al menos 4 caracteres' });
+    if (username.length < 3) return res.status(400).json({ error: 'El usuario debe tener al least 3 characteres' });
+    if (password.length < 4) return res.status(400).json({ error: 'La contraseña debe tener al menos 4 characteres' });
     const users = getUsers();
     if (users[username]) return res.status(409).json({ error: 'El usuario ya existe' });
     users[username] = { password: bcrypt.hashSync(password, 10), createdAt: new Date().toISOString() };
     saveUsers(users);
-    saveUserData(username, { transactions: [], customCategories: { expense: [], income: [] }, pin: '', credentials: [] });
+    saveUserData(username, { transactions: [], customCategories: { expense: [], income: [] }, pattern: '' });
     req.session.user = username;
     res.json({ success: true, username });
 });
@@ -87,22 +83,22 @@ app.get('/api/me', (req, res) => {
     res.json({ user: req.session.user });
 });
 
-// ─── PIN ────────────────────────────────────────────────
-app.get('/api/pin', requireAuth, (req, res) => {
+// ─── Pattern ────────────────────────────────────────────
+app.get('/api/pattern', requireAuth, (req, res) => {
     const data = getUserData(req.session.user);
-    res.json({ hasPin: !!data.pin, pin: data.pin || '' });
+    res.json({ hasPattern: !!data.pattern, pattern: data.pattern || '' });
 });
 
-app.post('/api/pin', requireAuth, (req, res) => {
+app.post('/api/pattern', requireAuth, (req, res) => {
     const data = getUserData(req.session.user);
-    data.pin = req.body.pin || '';
+    data.pattern = req.body.pattern || '';
     saveUserData(req.session.user, data);
     res.json({ success: true });
 });
 
-app.delete('/api/pin', requireAuth, (req, res) => {
+app.delete('/api/pattern', requireAuth, (req, res) => {
     const data = getUserData(req.session.user);
-    data.pin = '';
+    data.pattern = '';
     saveUserData(req.session.user, data);
     res.json({ success: true });
 });
@@ -149,137 +145,6 @@ app.delete('/api/categories/:type/:id', requireAuth, (req, res) => {
     data.customCategories[req.params.type] = data.customCategories[req.params.type].filter(c => c.id !== req.params.id);
     saveUserData(req.session.user, data);
     res.json({ success: true });
-});
-
-// ─── WebAuthn ───────────────────────────────────────────
-function getWebAuthnConfig(req) {
-    const origin = req.get('origin') || `${req.protocol}://${req.get('host')}`;
-    const host = req.get('host');
-    const rpID = host?.includes(':') ? host.split(':')[0] : host;
-    return { origin, rpID };
-}
-
-app.get('/api/webauthn/has-credentials/:username', (req, res) => {
-    const users = getUsers();
-    if (!users[req.params.username]) return res.json({ hasCredentials: false });
-    const data = getUserData(req.params.username);
-    res.json({ hasCredentials: (data.credentials || []).length > 0 });
-});
-
-app.post('/api/webauthn/register/begin', requireAuth, async (req, res) => {
-    const data = getUserData(req.session.user);
-    const { origin, rpID } = getWebAuthnConfig(req);
-    const userID = Buffer.from(req.session.user).toString('base64url');
-    const opts = await generateRegistrationOptions({
-        rpName: 'Mis Finanzas',
-        rpID,
-        userName: req.session.user,
-        userID,
-        attestationType: 'none',
-        excludeCredentials: (data.credentials || []).filter(c => c && c.id).map(c => ({
-            id: c.id,
-            type: 'public-key',
-            transports: c.transports || ['internal'],
-        })),
-    });
-    webauthnChallenges[req.session.user] = opts.challenge;
-    res.json(opts);
-});
-
-app.post('/api/webauthn/register/complete', requireAuth, async (req, res) => {
-    try {
-        const data = getUserData(req.session.user);
-        const { origin, rpID } = getWebAuthnConfig(req);
-        const challenge = webauthnChallenges[req.session.user];
-        if (!challenge) return res.status(400).json({ error: 'Challenge expirado, intentá de nuevo' });
-        const verification = await verifyRegistrationResponse({
-            response: req.body,
-            expectedChallenge: challenge,
-            expectedOrigin: origin,
-            expectedRPID: rpID,
-        });
-        if (!verification.verified || !verification.registrationInfo) {
-            return res.status(400).json({ error: 'No se pudo verificar la huella' });
-        }
-        delete webauthnChallenges[req.session.user];
-        const { credential } = verification.registrationInfo;
-        if (!data.credentials) data.credentials = [];
-        data.credentials.push({
-            id: credential.id,
-            publicKey: Buffer.from(credential.publicKey).toString('base64url'),
-            counter: credential.counter,
-            transports: req.body.response.transports || ['internal'],
-        });
-        saveUserData(req.session.user, data);
-        res.json({ success: true });
-    } catch (err) {
-        res.status(400).json({ error: err.message });
-    }
-});
-
-app.delete('/api/webauthn/remove', requireAuth, (req, res) => {
-    const data = getUserData(req.session.user);
-    data.credentials = [];
-    saveUserData(req.session.user, data);
-    res.json({ success: true });
-});
-
-app.post('/api/webauthn/login/begin', async (req, res) => {
-    const { username } = req.body;
-    const users = getUsers();
-    if (!users[username]) return res.status(400).json({ error: 'Usuario no encontrado' });
-    const data = getUserData(username);
-    const { rpID } = getWebAuthnConfig(req);
-    const creds = data.credentials || [];
-    if (!creds.length) return res.status(400).json({ error: 'Este usuario no tiene huella registrada' });
-    const opts = await generateAuthenticationOptions({
-        rpID,
-        allowCredentials: creds.map(c => ({
-            id: c.id,
-            type: 'public-key',
-            transports: c.transports || ['internal'],
-        })),
-        userVerification: 'required',
-    });
-    webauthnChallenges[username] = opts.challenge;
-    res.json(opts);
-});
-
-app.post('/api/webauthn/login/complete', async (req, res) => {
-    try {
-        const { username, credential: assertion } = req.body;
-        const challenge = webauthnChallenges[username];
-        if (!challenge) return res.status(400).json({ error: 'Challenge expirado, intentá de nuevo' });
-        const users = getUsers();
-        if (!users[username]) return res.status(400).json({ error: 'Usuario no encontrado' });
-        const data = getUserData(username);
-        const creds = data.credentials || [];
-        const storedCred = creds.find(c => c.id === assertion.id);
-        if (!storedCred) return res.status(400).json({ error: 'Credencial no encontrada' });
-        const { origin, rpID } = getWebAuthnConfig(req);
-        const verification = await verifyAuthenticationResponse({
-            response: assertion,
-            expectedChallenge: challenge,
-            expectedOrigin: origin,
-            expectedRPID: rpID,
-            credential: {
-                id: storedCred.id,
-                publicKey: Buffer.from(storedCred.publicKey, 'base64url'),
-                counter: storedCred.counter,
-                transports: storedCred.transports || ['internal'],
-            },
-        });
-        if (!verification.verified) {
-            return res.status(400).json({ error: 'Huella no válida' });
-        }
-        delete webauthnChallenges[username];
-        storedCred.counter = verification.authenticationInfo.newCounter;
-        saveUserData(username, data);
-        req.session.user = username;
-        res.json({ success: true, username });
-    } catch (err) {
-        res.status(400).json({ error: err.message });
-    }
 });
 
 // ─── Start ──────────────────────────────────────────────

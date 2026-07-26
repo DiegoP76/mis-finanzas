@@ -266,33 +266,20 @@
         </nav>
     </div>
 
-    <!-- PIN Lock -->
-    <div id="pin-screen" class="pin-overlay">
-        <div class="pin-box">
-            <div class="pin-icon">🔒</div>
-            <h2 class="pin-title" id="pin-title">Ingresá tu PIN</h2>
-            <p class="pin-subtitle" id="pin-subtitle">4 dígitos</p>
-            <div class="pin-dots" id="pin-dots">
-                <span class="pin-dot"></span>
-                <span class="pin-dot"></span>
-                <span class="pin-dot"></span>
-                <span class="pin-dot"></span>
+    <!-- Pattern Lock -->
+    <div id="pattern-screen" class="pattern-overlay">
+        <div class="pattern-box">
+            <div class="pattern-icon">🔐</div>
+            <h2 class="pattern-title" id="pattern-title">Dibujá tu patrón</h2>
+            <p class="pattern-subtitle" id="pattern-subtitle"></p>
+            <div class="pattern-grid-container">
+                <svg class="pattern-svg" width="260" height="260"></svg>
             </div>
-            <p id="pin-error" class="pin-error"></p>
-            <div class="pin-keypad">
-                <button class="pin-key" onclick="pinPress('1')">1</button>
-                <button class="pin-key" onclick="pinPress('2')">2</button>
-                <button class="pin-key" onclick="pinPress('3')">3</button>
-                <button class="pin-key" onclick="pinPress('4')">4</button>
-                <button class="pin-key" onclick="pinPress('5')">5</button>
-                <button class="pin-key" onclick="pinPress('6')">6</button>
-                <button class="pin-key" onclick="pinPress('7')">7</button>
-                <button class="pin-key" onclick="pinPress('8')">8</button>
-                <button class="pin-key" onclick="pinPress('9')">9</button>
-                <button class="pin-key pin-key-empty"></button>
-                <button class="pin-key" onclick="pinPress('0')">0</button>
-                <button class="pin-key pin-key-del" onclick="pinDelete()">⌫</button>
+            <p id="pattern-error" class="pattern-error"></p>
+            <div id="pattern-setup-container" style="display:none">
+                <button class="skip-btn" onclick="skipPattern()">Omitir</button>
             </div>
+            <button id="pattern-switch-user" class="text-btn" onclick="switchPatternUser()" style="margin-top:8px;font-size:13px">Usar otra cuenta</button>
         </div>
     </div>
 
@@ -310,7 +297,6 @@
                 <input type="text" id="auth-username" placeholder="Usuario" autocomplete="username" required>
                 <input type="password" id="auth-password" placeholder="Contraseña" autocomplete="current-password" required>
                 <button type="submit" id="auth-submit-btn">Ingresar</button>
-                <button type="button" id="bio-login-btn" class="bio-login-btn" onclick="loginWithBiometric()" style="display:none">🖐️ Ingresar con huella</button>
                 <p class="auth-error" id="auth-error"></p>
             </form>
         </div>

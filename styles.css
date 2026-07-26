@@ -1029,14 +1029,11 @@ html, body {
     text-align: center;
 }
 
-<<<<<<< HEAD
 .auth-icon {
     font-size: 48px;
     margin-bottom: 8px;
 }
 
-=======
->>>>>>> 035f997725ae977c4bce0123c2b21b667a6d8162
 .auth-title {
     font-size: 24px;
     font-weight: 800;
@@ -1123,18 +1120,6 @@ html, body {
     cursor: not-allowed;
 }
 
-.bio-login-btn {
-    background: var(--surface) !important;
-    color: var(--text) !important;
-    border: 2px solid var(--border) !important;
-    font-size: 14px !important;
-    margin-top: 8px !important;
-}
-
-.bio-login-btn:hover {
-    border-color: var(--primary) !important;
-}
-
 .auth-error {
     color: var(--expense);
     font-size: 13px;
@@ -1160,4 +1145,127 @@ html, body {
     .delete-btn {
         opacity: 1;
     }
+}
+
+/* Pattern Lock */
+.pattern-overlay {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    z-index: 2000;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.pattern-overlay.hidden {
+    display: none;
+}
+
+.pattern-box {
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 32px 24px;
+    width: 100%;
+    max-width: 340px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.08);
+    text-align: center;
+}
+
+.pattern-icon {
+    font-size: 48px;
+    margin-bottom: 8px;
+}
+
+.pattern-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 4px;
+}
+
+.pattern-subtitle {
+    font-size: 14px;
+    color: var(--text-muted);
+    margin-bottom: 20px;
+    min-height: 20px;
+}
+
+.pattern-grid-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 12px;
+    width: 260px;
+    height: 260px;
+    touch-action: none;
+}
+
+.pattern-svg {
+    width: 100%;
+    height: 100%;
+}
+
+.pattern-svg .pattern-dot {
+    fill: var(--border);
+    stroke: var(--text-muted);
+    stroke-width: 2;
+    transition: fill 0.15s, stroke 0.15s;
+}
+
+.pattern-svg .pattern-dot.active {
+    fill: var(--primary);
+    stroke: var(--primary);
+}
+
+.pattern-svg .pattern-dot.last {
+    fill: var(--primary);
+    stroke: var(--primary);
+    stroke-width: 3;
+}
+
+.pattern-svg .pattern-line {
+    stroke: var(--primary);
+    stroke-width: 4;
+    stroke-linecap: round;
+    opacity: 0.6;
+}
+
+.pattern-error {
+    color: var(--expense);
+    font-size: 13px;
+    min-height: 20px;
+    margin-bottom: 4px;
+}
+
+.pattern-box .text-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 13px;
+    cursor: pointer;
+    padding: 4px;
+}
+
+.pattern-box .text-btn:hover {
+    color: var(--primary);
+}
+
+.skip-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px 20px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    margin-top: 4px;
+    transition: all 0.2s;
+}
+
+.skip-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary);
 }
