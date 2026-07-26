@@ -169,7 +169,7 @@ app.get('/api/webauthn/has-credentials/:username', (req, res) => {
 app.post('/api/webauthn/register/begin', requireAuth, async (req, res) => {
     const data = getUserData(req.session.user);
     const { origin, rpID } = getWebAuthnConfig(req);
-    const userID = Buffer.from(req.session.user);
+    const userID = Buffer.from(req.session.user).toString('base64url');
     const opts = await generateRegistrationOptions({
         rpName: 'Mis Finanzas',
         rpID,

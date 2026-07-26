@@ -70,6 +70,7 @@ async function registerBiometric() {
         const publicKey = await api('/api/webauthn/register/begin', { method: 'POST' });
         if (!publicKey || !publicKey.challenge) throw new Error('Error al iniciar registro');
         publicKey.challenge = b64url2buf(publicKey.challenge);
+        if (publicKey.user && publicKey.user.id) publicKey.user.id = b64url2buf(publicKey.user.id);
         if (publicKey.excludeCredentials) {
             publicKey.excludeCredentials = publicKey.excludeCredentials.map(c => ({
                 ...c, id: b64url2buf(c.id)
