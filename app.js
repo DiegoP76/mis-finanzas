@@ -50,49 +50,54 @@ let patternNodes = [];
 let patternAttempts = 0;
 let patternMode = ''; // 'create' or 'unlock'
 
+const PATTERN_SIZE = 260;
+const PATTERN_PADDING = 42;
+const PATTERN_RADIUS = 20;
+const PATTERN_HIT_RADIUS = 50;
+
 function getPatternPoints() {
-    const svg = document.querySelector('.pattern-svg');
-    if (!svg) return [];
-    const rect = svg.getBoundingClientRect();
-    const cols = 3, rows = 3;
-    const cx = rect.width / 2;
-    const cy = rect.height / 2;
-    const r = Math.min(rect.width, rect.height) * 0.13;
-    const spacingX = (rect.width - r * 2) / 2;
-    const spacingY = (rect.height - r * 2) / 2;
+    const spacing = (PATTERN_SIZE - PATTERN_PADDING * 2) / 2;
     const points = [];
     let idx = 0;
-    for (let row = 0; row < rows; row++) {
-        for (let col = 0; col < cols; col++) {
-            const x = col === 0 ? r + 4 : col === 1 ? cx : rect.width - r - 4;
-            const y = row === 0 ? r + 4 : row === 1 ? cy : rect.height - r - 4;
-            points.push({ idx, x, y, cx: x, cy: y, r });
+    for (let row = 0; row < 3; row++) {
+        for (let col = 0; col < 3; col++) {
+            points.push({
+                idx,
+                x: PATTERN_PADDING + col * spacing,
+                y: PATTERN_PADDING + row * spacing,
+                r: PATTERN_RADIUS
+            });
             idx++;
         }
     }
     return points;
 }
 
-function getPatternNodeAt(clientX, clientY) {
+function svgCoord(clientX, clientY) {
     const svg = document.querySelector('.pattern-svg');
     if (!svg) return null;
-    const rect = svg.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return null;
+    return pt.matrixTransform(ctm.inverse());
+}
+
+function getPatternNodeAt(clientX, clientY) {
+    const coord = svgCoord(clientX, clientY);
+    if (!coord) return null;
     const points = getPatternPoints();
     for (const p of points) {
-        const dx = x - p.x, dy = y - p.y;
-        if (dx * dx + dy * dy <= (p.r * 2.5) * (p.r * 2.5)) return p;
+        const dx = coord.x - p.x, dy = coord.y - p.y;
+        if (dx * dx + dy * dy <= PATTERN_HIT_RADIUS * PATTERN_HIT_RADIUS) return p;
     }
     return null;
 }
 
 function drawPattern(seq) {
     const svg = document.querySelector('.pattern-svg');
-    const container = svg.parentElement;
-    const w = container.clientWidth || 260;
-    const h = container.clientHeight || 260;
-    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    svg.setAttribute('viewBox', `0 0 ${PATTERN_SIZE} ${PATTERN_SIZE}`);
     const points = getPatternPoints();
 
     let html = points.map(p =>
