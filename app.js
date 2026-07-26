@@ -51,6 +51,12 @@ function buf2b64url(buf) {
         .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
+function b64url2buf(str) {
+    str = str.replace(/-/g, '+').replace(/_/g, '/');
+    while (str.length % 4) str += '=';
+    return Uint8Array.from(atob(str), c => c.charCodeAt(0));
+}
+
 async function checkBiometric(username) {
     try {
         const data = await api(`/api/webauthn/has-credentials/${encodeURIComponent(username)}`);
@@ -62,11 +68,11 @@ async function registerBiometric() {
     try {
         const publicKey = await api('/api/webauthn/register/begin', { method: 'POST' });
         if (!publicKey || !publicKey.challenge) throw new Error('Error al iniciar registro');
-        publicKey.challenge = Uint8Array.from(atob(publicKey.challenge), c => c.charCodeAt(0));
-        publicKey.user.id = Uint8Array.from(atob(publicKey.user.id), c => c.charCodeAt(0));
+        publicKey.challenge = b64url2buf(publicKey.challenge);
+        publicKey.user.id = b64url2buf(publicKey.user.id);
         if (publicKey.excludeCredentials) {
             publicKey.excludeCredentials = publicKey.excludeCredentials.map(c => ({
-                ...c, id: Uint8Array.from(atob(c.id), c => c.charCodeAt(0))
+                ...c, id: b64url2buf(c.id)
             }));
         }
         const cred = await navigator.credentials.create({ publicKey });
@@ -97,10 +103,10 @@ async function loginWithBiometric() {
     try {
         const publicKey = await api('/api/webauthn/login/begin', { method: 'POST', body: { username } });
         if (!publicKey || !publicKey.challenge) throw new Error('Error al iniciar');
-        publicKey.challenge = Uint8Array.from(atob(publicKey.challenge), c => c.charCodeAt(0));
+        publicKey.challenge = b64url2buf(publicKey.challenge);
         if (publicKey.allowCredentials) {
             publicKey.allowCredentials = publicKey.allowCredentials.map(c => ({
-                ...c, id: Uint8Array.from(atob(c.id), c => c.charCodeAt(0))
+                ...c, id: b64url2buf(c.id)
             }));
         }
         const cred = await navigator.credentials.get({ publicKey });
