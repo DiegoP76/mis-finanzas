@@ -72,9 +72,9 @@ async function registerBiometric() {
         publicKey.challenge = b64url2buf(publicKey.challenge);
         if (publicKey.user && publicKey.user.id) publicKey.user.id = b64url2buf(publicKey.user.id);
         if (publicKey.excludeCredentials) {
-            publicKey.excludeCredentials = publicKey.excludeCredentials.map(c => ({
-                ...c, id: b64url2buf(c.id)
-            }));
+            publicKey.excludeCredentials = publicKey.excludeCredentials
+                .filter(c => c && c.id)
+                .map(c => ({ ...c, id: b64url2buf(c.id) }));
         }
         const cred = await navigator.credentials.create({ publicKey });
         if (!cred) throw new Error('Registro cancelado');
@@ -106,9 +106,9 @@ async function loginWithBiometric() {
         if (!publicKey || !publicKey.challenge) throw new Error('Error al iniciar');
         publicKey.challenge = b64url2buf(publicKey.challenge);
         if (publicKey.allowCredentials) {
-            publicKey.allowCredentials = publicKey.allowCredentials.map(c => ({
-                ...c, id: b64url2buf(c.id)
-            }));
+            publicKey.allowCredentials = publicKey.allowCredentials
+                .filter(c => c && c.id)
+                .map(c => ({ ...c, id: b64url2buf(c.id) }));
         }
         const cred = await navigator.credentials.get({ publicKey });
         if (!cred) throw new Error('Autenticación cancelada');

@@ -176,7 +176,7 @@ app.post('/api/webauthn/register/begin', requireAuth, async (req, res) => {
         userName: req.session.user,
         userID,
         attestationType: 'none',
-        excludeCredentials: (data.credentials || []).map(c => ({
+        excludeCredentials: (data.credentials || []).filter(c => c && c.id).map(c => ({
             id: c.id,
             type: 'public-key',
             transports: c.transports || ['internal'],
