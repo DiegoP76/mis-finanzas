@@ -52,6 +52,7 @@ function buf2b64url(buf) {
 }
 
 function b64url2buf(str) {
+    if (!str) throw new Error('b64url2buf: str es ' + typeof str);
     str = str.replace(/-/g, '+').replace(/_/g, '/');
     while (str.length % 4) str += '=';
     return Uint8Array.from(atob(str), c => c.charCodeAt(0));
@@ -69,7 +70,6 @@ async function registerBiometric() {
         const publicKey = await api('/api/webauthn/register/begin', { method: 'POST' });
         if (!publicKey || !publicKey.challenge) throw new Error('Error al iniciar registro');
         publicKey.challenge = b64url2buf(publicKey.challenge);
-        publicKey.user.id = b64url2buf(publicKey.user.id);
         if (publicKey.excludeCredentials) {
             publicKey.excludeCredentials = publicKey.excludeCredentials.map(c => ({
                 ...c, id: b64url2buf(c.id)
