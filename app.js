@@ -46,6 +46,11 @@ async function api(url, options = {}) {
 }
 
 // ─── WebAuthn ───────────────────────────────────────────
+function buf2b64url(buf) {
+    return btoa(String.fromCharCode(...new Uint8Array(buf)))
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
 async function checkBiometric(username) {
     try {
         const data = await api(`/api/webauthn/has-credentials/${encodeURIComponent(username)}`);
@@ -55,24 +60,24 @@ async function checkBiometric(username) {
 
 async function registerBiometric() {
     try {
-        const opts = await api('/api/webauthn/register/begin', { method: 'POST' });
-        if (!opts.publicKey) throw new Error('Error al iniciar registro');
-        opts.publicKey.challenge = Uint8Array.from(atob(opts.publicKey.challenge), c => c.charCodeAt(0));
-        opts.publicKey.user.id = Uint8Array.from(atob(opts.publicKey.user.id), c => c.charCodeAt(0));
-        if (opts.publicKey.excludeCredentials) {
-            opts.publicKey.excludeCredentials = opts.publicKey.excludeCredentials.map(c => ({
+        const publicKey = await api('/api/webauthn/register/begin', { method: 'POST' });
+        if (!publicKey || !publicKey.challenge) throw new Error('Error al iniciar registro');
+        publicKey.challenge = Uint8Array.from(atob(publicKey.challenge), c => c.charCodeAt(0));
+        publicKey.user.id = Uint8Array.from(atob(publicKey.user.id), c => c.charCodeAt(0));
+        if (publicKey.excludeCredentials) {
+            publicKey.excludeCredentials = publicKey.excludeCredentials.map(c => ({
                 ...c, id: Uint8Array.from(atob(c.id), c => c.charCodeAt(0))
             }));
         }
-        const cred = await navigator.credentials.create({ publicKey: opts.publicKey });
+        const cred = await navigator.credentials.create({ publicKey });
         if (!cred) throw new Error('Registro cancelado');
         const reg = {
             id: cred.id,
-            rawId: btoa(String.fromCharCode(...new Uint8Array(cred.rawId))),
+            rawId: buf2b64url(cred.rawId),
             type: cred.type,
             response: {
-                attestationObject: btoa(String.fromCharCode(...new Uint8Array(cred.response.attestationObject))),
-                clientDataJSON: btoa(String.fromCharCode(...new Uint8Array(cred.response.clientDataJSON))),
+                attestationObject: buf2b64url(cred.response.attestationObject),
+                clientDataJSON: buf2b64url(cred.response.clientDataJSON),
                 transports: cred.response.getTransports ? cred.response.getTransports() : ['internal'],
             },
             clientExtensionResults: cred.getClientExtensionResults ? cred.getClientExtensionResults() : {},
@@ -90,25 +95,25 @@ async function loginWithBiometric() {
     const username = document.getElementById('auth-username').value.trim();
     if (!username) { showToast('Primero escribí tu usuario'); return; }
     try {
-        const opts = await api('/api/webauthn/login/begin', { method: 'POST', body: { username } });
-        if (!opts.publicKey) throw new Error('Error al iniciar');
-        opts.publicKey.challenge = Uint8Array.from(atob(opts.publicKey.challenge), c => c.charCodeAt(0));
-        if (opts.publicKey.allowCredentials) {
-            opts.publicKey.allowCredentials = opts.publicKey.allowCredentials.map(c => ({
+        const publicKey = await api('/api/webauthn/login/begin', { method: 'POST', body: { username } });
+        if (!publicKey || !publicKey.challenge) throw new Error('Error al iniciar');
+        publicKey.challenge = Uint8Array.from(atob(publicKey.challenge), c => c.charCodeAt(0));
+        if (publicKey.allowCredentials) {
+            publicKey.allowCredentials = publicKey.allowCredentials.map(c => ({
                 ...c, id: Uint8Array.from(atob(c.id), c => c.charCodeAt(0))
             }));
         }
-        const cred = await navigator.credentials.get({ publicKey: opts.publicKey });
+        const cred = await navigator.credentials.get({ publicKey });
         if (!cred) throw new Error('Autenticación cancelada');
         const assertion = {
             id: cred.id,
-            rawId: btoa(String.fromCharCode(...new Uint8Array(cred.rawId))),
+            rawId: buf2b64url(cred.rawId),
             type: cred.type,
             response: {
-                authenticatorData: btoa(String.fromCharCode(...new Uint8Array(cred.response.authenticatorData))),
-                clientDataJSON: btoa(String.fromCharCode(...new Uint8Array(cred.response.clientDataJSON))),
-                signature: btoa(String.fromCharCode(...new Uint8Array(cred.response.signature))),
-                userHandle: cred.response.userHandle ? btoa(String.fromCharCode(...new Uint8Array(cred.response.userHandle))) : null,
+                authenticatorData: buf2b64url(cred.response.authenticatorData),
+                clientDataJSON: buf2b64url(cred.response.clientDataJSON),
+                signature: buf2b64url(cred.response.signature),
+                userHandle: cred.response.userHandle ? buf2b64url(cred.response.userHandle) : null,
             },
             clientExtensionResults: cred.getClientExtensionResults ? cred.getClientExtensionResults() : {},
         };

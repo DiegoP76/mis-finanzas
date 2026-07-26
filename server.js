@@ -166,10 +166,10 @@ app.get('/api/webauthn/has-credentials/:username', (req, res) => {
     res.json({ hasCredentials: (data.credentials || []).length > 0 });
 });
 
-app.post('/api/webauthn/register/begin', requireAuth, (req, res) => {
+app.post('/api/webauthn/register/begin', requireAuth, async (req, res) => {
     const data = getUserData(req.session.user);
     const { origin, rpID } = getWebAuthnConfig(req);
-    const opts = generateRegistrationOptions({
+    const opts = await generateRegistrationOptions({
         rpName: 'Mis Finanzas',
         rpID,
         userName: req.session.user,
@@ -230,7 +230,7 @@ app.post('/api/webauthn/login/begin', async (req, res) => {
     const { rpID } = getWebAuthnConfig(req);
     const creds = data.credentials || [];
     if (!creds.length) return res.status(400).json({ error: 'Este usuario no tiene huella registrada' });
-    const opts = generateAuthenticationOptions({
+    const opts = await generateAuthenticationOptions({
         rpID,
         allowCredentials: creds.map(c => ({
             id: c.id,
