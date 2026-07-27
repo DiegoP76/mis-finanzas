@@ -1,13 +1,18 @@
 const { Pool } = require('pg');
 
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-});
+let pool = null;
+let isReady = false;
 
 async function initDB() {
-    const client = await pool.connect();
+    const dbUrl = process.env.DATABASE_URL;
+    if (!dbUrl) {
+        console.log('No DATABASE_URL set — using JSON file storage');
+        return;
+    }
     try {
-        await client.query(`
+        pool = new Pool({ connectionString: dbUrl });
+        await pool.query('SELECT 1');
+        await pool.query(`
             CREATE TABLE IF NOT EXISTS users (
                 username VARCHAR(100) PRIMARY KEY,
                 password VARCHAR(255) NOT NULL,
@@ -30,13 +35,15 @@ async function initDB() {
                 type VARCHAR(20) NOT NULL,
                 label VARCHAR(100) NOT NULL,
                 icon VARCHAR(10) DEFAULT '\uD83D\uDCCC',
-                    color VARCHAR(20) NOT NULL
-                );
-            `);
-        console.log('Database tables initialized');
-    } finally {
-        client.release();
+                color VARCHAR(20) NOT NULL
+            );
+        `);
+        isReady = true;
+        console.log('PostgreSQL connected — tables ready');
+    } catch (err) {
+        console.error('PostgreSQL connection failed, falling back to JSON files:', err.message);
+        pool = null;
     }
 }
 
-module.exports = { pool, initDB };
+module.exports = { initDB, getPool: () => pool, isReady: () => isReady };
