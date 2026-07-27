@@ -24,7 +24,7 @@ let CATEGORY_MAP = {};
 let transactions = [];
 let customUserCategories = { expense: [], income: [] };
 let currentUser = null;
-let userPattern = '';
+let userPin = '';
 let expenseChart = null;
 let monthlyChart = null;
 let currentFilter = 'all';
@@ -44,309 +44,137 @@ async function api(url, options = {}) {
     return data;
 }
 
-// ─── Pattern ────────────────────────────────────────────
-const PATTERN_MIN = 4;
-let patternNodes = [];
-let patternAttempts = 0;
-let patternMode = ''; // 'create' or 'unlock'
+// ─── PIN ────────────────────────────────────────────────
+let pinBuffer = '';
+let pinAttempts = 0;
+let pinMode = '';
 
-const PATTERN_SIZE = 260;
-const PATTERN_PADDING = 42;
-const PATTERN_RADIUS = 20;
-const PATTERN_HIT_RADIUS = 50;
-
-function getPatternPoints() {
-    const spacing = (PATTERN_SIZE - PATTERN_PADDING * 2) / 2;
-    const points = [];
-    let idx = 0;
-    for (let row = 0; row < 3; row++) {
-        for (let col = 0; col < 3; col++) {
-            points.push({
-                idx,
-                x: PATTERN_PADDING + col * spacing,
-                y: PATTERN_PADDING + row * spacing,
-                r: PATTERN_RADIUS
-            });
-            idx++;
-        }
-    }
-    return points;
+function pinPress(n) {
+    if (pinBuffer.length >= 3) return;
+    pinBuffer += n;
+    updatePinDots();
+    if (pinBuffer.length === 3) setTimeout(checkPin, 80);
 }
 
-function svgCoord(clientX, clientY) {
-    const svg = document.querySelector('.pattern-svg');
-    if (!svg) return null;
-    const pt = svg.createSVGPoint();
-    pt.x = clientX;
-    pt.y = clientY;
-    const ctm = svg.getScreenCTM();
-    if (!ctm) return null;
-    return pt.matrixTransform(ctm.inverse());
+function pinDelete() {
+    if (pinBuffer.length > 0) { pinBuffer = pinBuffer.slice(0, -1); updatePinDots(); }
 }
 
-function getPatternNodeAt(clientX, clientY) {
-    const coord = svgCoord(clientX, clientY);
-    if (!coord) return null;
-    const points = getPatternPoints();
-    for (const p of points) {
-        const dx = coord.x - p.x, dy = coord.y - p.y;
-        if (dx * dx + dy * dy <= PATTERN_HIT_RADIUS * PATTERN_HIT_RADIUS) return p;
-    }
-    return null;
+function updatePinDots() {
+    document.querySelectorAll('.pin-dot').forEach((dot, i) => dot.classList.toggle('filled', i < pinBuffer.length));
+    document.getElementById('pin-error').textContent = '';
 }
 
-function drawPattern(seq) {
-    const svg = document.querySelector('.pattern-svg');
-    svg.setAttribute('viewBox', `0 0 ${PATTERN_SIZE} ${PATTERN_SIZE}`);
-    const points = getPatternPoints();
-
-    let html = points.map(p =>
-        `<circle cx="${p.x}" cy="${p.y}" r="${p.r}" class="pattern-dot${seq.includes(p.idx) ? ' active' : ''}" data-idx="${p.idx}"/>`
-    ).join('');
-
-    if (seq.length > 1) {
-        for (let i = 0; i < seq.length - 1; i++) {
-            const a = points[seq[i]], b = points[seq[i + 1]];
-            if (a && b) {
-                html += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" class="pattern-line"/>`;
-            }
-        }
-    }
-
-    const last = seq.length > 0 ? points[seq[seq.length - 1]] : null;
-    if (last) {
-        html += `<circle cx="${last.x}" cy="${last.y}" r="${last.r}" class="pattern-dot last" data-idx="${last.idx}"/>`;
-    }
-
-    svg.innerHTML = html;
-}
-
-function getPatternSequence(clientX, clientY) {
-    const node = getPatternNodeAt(clientX, clientY);
-    if (!node) return false;
-    if (patternNodes.includes(node.idx)) return true;
-    patternNodes.push(node.idx);
-    drawPattern(patternNodes);
-    return true;
-}
-
-function patternStart(e) {
-    e.preventDefault();
-    const pt = e.touches ? { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY } : { clientX: e.clientX, clientY: e.clientY };
-    patternNodes = [];
-    getPatternSequence(pt.clientX, pt.clientY);
-}
-
-function patternMove(e) {
-    e.preventDefault();
-    if (patternNodes.length === 0) return;
-    const pt = e.touches ? { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY } : { clientX: e.clientX, clientY: e.clientY };
-    getPatternSequence(pt.clientX, pt.clientY);
-}
-
-function patternEnd(e) {
-    e.preventDefault();
-    if (patternNodes.length === 0) return;
-    const seq = patternNodes.join('-');
-    patternNodes = [];
-
-    if (patternMode === 'create') {
-        verifyPatternCreate(seq);
-    } else {
-        verifyPatternUnlock(seq);
-    }
-}
-
-let firstPattern = '';
-
-function verifyPatternCreate(seq) {
-    if (seq.split('-').length < PATTERN_MIN) {
-        document.getElementById('pattern-error').textContent = 'Conectá al menos 4 puntos';
-        drawPattern([]);
+function checkPin() {
+    if (!userPin) {
+        if (!pinMode) return;
+        setUserPin(pinBuffer);
+        pinBuffer = ''; hidePin(); updatePinBtn(); initApp();
         return;
     }
-    if (!firstPattern) {
-        firstPattern = seq;
-        drawPattern([]);
-        document.getElementById('pattern-error').textContent = 'Repetí el patrón';
-        document.getElementById('pattern-title').textContent = 'Repetí el patrón';
-        return;
-    }
-    if (seq === firstPattern) {
-        setUserPattern(seq);
-        firstPattern = '';
-        hidePattern();
-        updatePatternBtn();
-        initApp();
+    if (pinBuffer === userPin) {
+        pinBuffer = ''; hidePin(); initApp();
     } else {
-        firstPattern = '';
-        drawPattern([]);
-        document.getElementById('pattern-error').textContent = 'Los patrones no coinciden';
-        document.getElementById('pattern-title').textContent = 'Creá tu patrón';
-    }
-}
-
-function verifyPatternUnlock(seq) {
-    if (seq === userPattern) {
-        hidePattern();
-        initApp();
-    } else {
-        patternAttempts++;
-        drawPattern([]);
-        if (patternAttempts >= 3) {
-            document.getElementById('pattern-error').textContent = 'Demasiados intentos';
+        pinAttempts++;
+        updatePinDots();
+        if (pinAttempts >= 3) {
+            document.getElementById('pin-error').textContent = 'Demasiados intentos';
             setTimeout(() => {
                 localStorage.removeItem('finanzas_last_user');
-                localStorage.removeItem('finanzas_last_pattern');
-                hidePattern();
-                showAuth();
+                localStorage.removeItem('finanzas_last_pin');
+                hidePin(); showAuth();
             }, 1000);
         } else {
-            document.getElementById('pattern-error').textContent = 'Patrón incorrecto';
+            document.getElementById('pin-error').textContent = 'PIN incorrecto';
+            pinBuffer = ''; updatePinDots();
         }
     }
 }
 
-function showPattern() {
-    const screen = document.getElementById('pattern-screen');
+function showPin() {
+    const screen = document.getElementById('pin-screen');
     screen.classList.remove('hidden');
-    document.getElementById('pattern-error').textContent = '';
-
-    if (userPattern) {
-        patternMode = 'unlock';
-        patternAttempts = 0;
-        document.getElementById('pattern-title').textContent = 'Dibujá tu patrón';
-        document.getElementById('pattern-subtitle').textContent = currentUser || '';
-        document.getElementById('pattern-switch-user').style.display = '';
-        document.getElementById('pattern-setup-container').style.display = 'none';
+    document.getElementById('pin-error').textContent = '';
+    if (userPin) {
+        pinMode = 'unlock'; pinAttempts = 0;
+        document.getElementById('pin-title').textContent = 'Ingresá tu PIN';
+        document.getElementById('pin-subtitle').textContent = currentUser || '';
+        document.getElementById('pin-switch-user').style.display = '';
+        document.getElementById('pin-setup-container').style.display = 'none';
     } else {
-        patternMode = 'create';
-        firstPattern = '';
-        document.getElementById('pattern-title').textContent = 'Creá tu patrón';
-        document.getElementById('pattern-subtitle').textContent = 'Conectá al menos 4 puntos';
-        document.getElementById('pattern-switch-user').style.display = 'none';
-        document.getElementById('pattern-setup-container').style.display = '';
+        pinMode = 'create';
+        document.getElementById('pin-title').textContent = 'Creá tu PIN de 3 dígitos';
+        document.getElementById('pin-subtitle').textContent = '';
+        document.getElementById('pin-switch-user').style.display = 'none';
+        document.getElementById('pin-setup-container').style.display = '';
     }
-    drawPattern([]);
-    const svg = document.querySelector('.pattern-svg');
-    if (svg) {
-        svg.addEventListener('touchstart', patternStart, { passive: false });
-        svg.addEventListener('touchmove', patternMove, { passive: false });
-        svg.addEventListener('touchend', patternEnd, { passive: false });
-        svg.addEventListener('mousedown', patternStart);
-        svg.addEventListener('mousemove', patternMove);
-        svg.addEventListener('mouseup', patternEnd);
-        svg.addEventListener('mouseleave', patternEnd);
-    }
+    pinBuffer = ''; updatePinDots();
 }
 
-function hidePattern() {
-    const screen = document.getElementById('pattern-screen');
-    screen.classList.add('hidden');
-    const svg = document.querySelector('.pattern-svg');
-    if (svg) {
-        svg.removeEventListener('touchstart', patternStart);
-        svg.removeEventListener('touchmove', patternMove);
-        svg.removeEventListener('touchend', patternEnd);
-        svg.removeEventListener('mousedown', patternStart);
-        svg.removeEventListener('mousemove', patternMove);
-        svg.removeEventListener('mouseup', patternEnd);
-        svg.removeEventListener('mouseleave', patternEnd);
-    }
+function hidePin() {
+    document.getElementById('pin-screen').classList.add('hidden');
 }
 
-function switchPatternUser() {
+function switchPinUser() {
     localStorage.removeItem('finanzas_last_user');
-    localStorage.removeItem('finanzas_last_pattern');
-    hidePattern();
-    showAuth();
+    localStorage.removeItem('finanzas_last_pin');
+    hidePin(); showAuth();
 }
 
-function skipPattern() {
-    firstPattern = '';
-    hidePattern();
-    updatePatternBtn();
-    initApp();
+function skipPin() {
+    hidePin(); updatePinBtn(); initApp();
 }
 
-async function setUserPattern(pattern) {
-    try {
-        await api('/api/pattern', { method: 'POST', body: { pattern } });
-    } catch {}
-    userPattern = pattern;
+async function setUserPin(pin) {
+    try { await api('/api/pin', { method: 'POST', body: { pin } }); } catch {}
+    userPin = pin;
     if (currentUser) {
         localStorage.setItem('finanzas_last_user', currentUser);
-        localStorage.setItem('finanzas_last_pattern', pattern);
+        localStorage.setItem('finanzas_last_pin', pin);
     }
 }
 
-async function removeUserPattern() {
-    try {
-        await api('/api/pattern', { method: 'DELETE' });
-    } catch {}
-    userPattern = '';
+async function removeUserPin() {
+    try { await api('/api/pin', { method: 'DELETE' }); } catch {}
+    userPin = '';
     if (currentUser) {
         localStorage.removeItem('finanzas_last_user');
-        localStorage.removeItem('finanzas_last_pattern');
+        localStorage.removeItem('finanzas_last_pin');
     }
 }
 
-function togglePattern() {
-    if (userPattern) {
-        if (confirm('¿Desactivar el acceso con patrón?')) {
-            removeUserPattern();
-            updatePatternBtn();
-            showToast('Patrón desactivado');
-        }
+function togglePin() {
+    if (userPin) {
+        if (confirm('¿Desactivar el bloqueo por PIN?')) { removeUserPin(); updatePinBtn(); showToast('PIN desactivado'); }
     } else {
-        patternMode = 'create';
-        firstPattern = '';
-        document.getElementById('pattern-title').textContent = 'Creá tu patrón';
-        document.getElementById('pattern-subtitle').textContent = 'Conectá al menos 4 puntos';
-        document.getElementById('pattern-error').textContent = '';
-        document.getElementById('pattern-switch-user').style.display = 'none';
-        document.getElementById('pattern-setup-container').style.display = '';
-        document.getElementById('pattern-screen').classList.remove('hidden');
-        drawPattern([]);
-        const svg = document.querySelector('.pattern-svg');
-        if (svg) {
-            svg.addEventListener('touchstart', patternStart, { passive: false });
-            svg.addEventListener('touchmove', patternMove, { passive: false });
-            svg.addEventListener('touchend', patternEnd, { passive: false });
-            svg.addEventListener('mousedown', patternStart);
-            svg.addEventListener('mousemove', patternMove);
-            svg.addEventListener('mouseup', patternEnd);
-            svg.addEventListener('mouseleave', patternEnd);
-        }
+        pinMode = 'create';
+        document.getElementById('pin-title').textContent = 'Creá tu PIN de 3 dígitos';
+        document.getElementById('pin-subtitle').textContent = '';
+        document.getElementById('pin-error').textContent = '';
+        document.getElementById('pin-switch-user').style.display = 'none';
+        document.getElementById('pin-setup-container').style.display = '';
+        document.getElementById('pin-screen').classList.remove('hidden');
+        pinBuffer = ''; updatePinDots();
     }
 }
 
 // ─── Auth ───────────────────────────────────────────────
 async function checkSession() {
     const lastUser = localStorage.getItem('finanzas_last_user');
-    const lastPattern = localStorage.getItem('finanzas_last_pattern');
-
+    const lastPin = localStorage.getItem('finanzas_last_pin');
     try {
         const data = await api('/api/me');
         if (data.user) {
             currentUser = data.user;
             await loadAllData();
-            if (userPattern) showPattern(); else initApp();
-        } else if (lastUser && lastPattern) {
-            currentUser = lastUser;
-            userPattern = lastPattern;
-            showPattern();
-        } else {
-            showAuth();
-        }
+            if (userPin) showPin(); else initApp();
+        } else if (lastUser && lastPin) {
+            currentUser = lastUser; userPin = lastPin;
+            showPin();
+        } else { showAuth(); }
     } catch {
-        if (lastUser && lastPattern) {
-            currentUser = lastUser;
-            userPattern = lastPattern;
-            showPattern();
-        } else {
-            showAuth();
-        }
+        if (lastUser && lastPin) { currentUser = lastUser; userPin = lastPin; showPin(); }
+        else { showAuth(); }
     }
 }
 
@@ -355,7 +183,7 @@ async function login(username, password) {
     currentUser = data.username;
     await loadAllData();
     hideAuth();
-    if (userPattern) showPattern(); else maybeSetPattern();
+    if (userPin) showPin(); else maybeSetPin();
 }
 
 async function register(username, password) {
@@ -363,41 +191,28 @@ async function register(username, password) {
     currentUser = data.username;
     await loadAllData();
     hideAuth();
-    maybeSetPattern();
+    maybeSetPin();
 }
 
-function maybeSetPattern() {
+function maybeSetPin() {
     localStorage.setItem('finanzas_last_user', currentUser);
-    patternMode = 'create';
-    firstPattern = '';
-    document.getElementById('pattern-title').textContent = 'Creá tu patrón de acceso rápido';
-    document.getElementById('pattern-subtitle').textContent = 'Conectá al menos 4 puntos';
-    document.getElementById('pattern-error').textContent = '';
-    document.getElementById('pattern-switch-user').style.display = 'none';
-    document.getElementById('pattern-setup-container').style.display = '';
-    document.getElementById('pattern-screen').classList.remove('hidden');
-    drawPattern([]);
-    const svg = document.querySelector('.pattern-svg');
-    if (svg) {
-        svg.addEventListener('touchstart', patternStart, { passive: false });
-        svg.addEventListener('touchmove', patternMove, { passive: false });
-        svg.addEventListener('touchend', patternEnd, { passive: false });
-        svg.addEventListener('mousedown', patternStart);
-        svg.addEventListener('mousemove', patternMove);
-        svg.addEventListener('mouseup', patternEnd);
-        svg.addEventListener('mouseleave', patternEnd);
-    }
+    pinMode = 'create';
+    document.getElementById('pin-title').textContent = 'Creá tu PIN de 3 dígitos';
+    document.getElementById('pin-subtitle').textContent = '';
+    document.getElementById('pin-error').textContent = '';
+    document.getElementById('pin-switch-user').style.display = 'none';
+    document.getElementById('pin-setup-container').style.display = '';
+    document.getElementById('pin-screen').classList.remove('hidden');
+    pinBuffer = ''; updatePinDots();
 }
 
 async function logout() {
     await api('/api/logout', { method: 'POST' });
     localStorage.removeItem('finanzas_last_user');
-    localStorage.removeItem('finanzas_last_pattern');
-    currentUser = null;
-    transactions = [];
+    localStorage.removeItem('finanzas_last_pin');
+    currentUser = null; transactions = [];
     customUserCategories = { expense: [], income: [] };
-    userPattern = '';
-    CATEGORY_MAP = {};
+    userPin = ''; CATEGORY_MAP = {};
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
     document.getElementById('page-dashboard').classList.add('active');
@@ -456,26 +271,26 @@ async function handleAuth(e) {
 // ─── Data loading ───────────────────────────────────────
 async function loadAllData() {
     try {
-        const [txs, cats, patternData] = await Promise.all([
+        const [txs, cats, pinData] = await Promise.all([
             api('/api/transactions'),
             api('/api/categories'),
-            api('/api/pattern')
+            api('/api/pin')
         ]);
         transactions = txs;
         customUserCategories = cats;
-        userPattern = patternData.pattern || '';
+        userPin = pinData.pin || '';
         if (currentUser) {
-            if (userPattern) {
+            if (userPin) {
                 localStorage.setItem('finanzas_last_user', currentUser);
-                localStorage.setItem('finanzas_last_pattern', userPattern);
+                localStorage.setItem('finanzas_last_pin', userPin);
             } else {
                 localStorage.removeItem('finanzas_last_user');
-                localStorage.removeItem('finanzas_last_pattern');
+                localStorage.removeItem('finanzas_last_pin');
             }
         }
     } catch {
-        const lastPattern = localStorage.getItem('finanzas_last_pattern');
-        if (lastPattern) userPattern = lastPattern;
+        const lastPin = localStorage.getItem('finanzas_last_pin');
+        if (lastPin) userPin = lastPin;
     }
     rebuildCategoryMap();
 }
@@ -567,8 +382,7 @@ function populateCategories() {
     select.innerHTML = '<option value="">Seleccionar</option>';
     getAllCategories(currentType).forEach(c => {
         const opt = document.createElement('option');
-        opt.value = c.id;
-        opt.textContent = c.icon + ' ' + c.label;
+        opt.value = c.id; opt.textContent = c.icon + ' ' + c.label;
         select.appendChild(opt);
     });
     const mostUsed = getMostUsedCategory(currentType);
@@ -586,8 +400,7 @@ function setupTypeToggle() {
     document.querySelectorAll('.type-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            populateCategories();
+            btn.classList.add('active'); populateCategories();
             document.getElementById('tx-amount').focus();
         });
     });
@@ -602,15 +415,12 @@ function setupForm() {
         const description = document.getElementById('tx-description').value.trim();
         const date = document.getElementById('tx-date').value;
         if (!category || !amount || !description || !date) return;
-        try {
-            await addTransactionAPI({ type, category, amount, description, date });
-        } catch (err) { showToast('Error al guardar: ' + err.message); return; }
-        e.target.reset();
-        setDefaultDate();
+        try { await addTransactionAPI({ type, category, amount, description, date }); }
+        catch (err) { showToast('Error: ' + err.message); return; }
+        e.target.reset(); setDefaultDate();
         document.querySelector('.type-btn.expense-type').classList.add('active');
         document.querySelector('.type-btn.income-type').classList.remove('active');
-        populateCategories();
-        updateAll();
+        populateCategories(); updateAll();
         showToast('Movimiento guardado');
         navigateTo('dashboard');
     });
@@ -662,8 +472,7 @@ function updateExpenseChart(monthTxs) {
     if (typeof Chart === 'undefined') return;
     const expenseTxs = monthTxs.filter(tx => tx.type === 'expense');
     const emptyMsg = document.getElementById('expense-chart-empty');
-    const canvas = document.getElementById('expenseChart');
-    const ctx = canvas.getContext('2d');
+    const canvas = document.getElementById('expenseChart'); const ctx = canvas.getContext('2d');
     if (expenseChart) { expenseChart.destroy(); expenseChart = null; }
     if (expenseTxs.length === 0) { canvas.style.display = 'none'; emptyMsg.style.display = 'block'; return; }
     canvas.style.display = 'block'; emptyMsg.style.display = 'none';
@@ -678,8 +487,7 @@ function updateExpenseChart(monthTxs) {
 
 function updateMonthlyChart() {
     if (typeof Chart === 'undefined') return;
-    const canvas = document.getElementById('monthlyChart');
-    const ctx = canvas.getContext('2d');
+    const canvas = document.getElementById('monthlyChart'); const ctx = canvas.getContext('2d');
     const emptyMsg = document.getElementById('monthly-chart-empty');
     if (monthlyChart) { monthlyChart.destroy(); monthlyChart = null; }
     const now = new Date();
@@ -708,8 +516,7 @@ function renderTransactions() {
     else if (currentFilter === 'expense') filtered = filtered.filter(tx => tx.type === 'expense');
     filtered.sort((a, b) => parseDate(b.date) - parseDate(a.date));
     if (!filtered.length) { container.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:40px 0;font-size:14px">No hay movimientos</p>'; return; }
-    let currentDate = '';
-    let html = '';
+    let currentDate = ''; let html = '';
     filtered.forEach(tx => {
         if (tx.date !== currentDate) {
             currentDate = tx.date;
@@ -724,22 +531,13 @@ function renderTransactions() {
 function renderTransactionHTML(tx) {
     const cat = CATEGORY_MAP[tx.category] || { label: tx.category, icon: '📦' };
     const prefix = tx.type === 'expense' ? '-' : '+';
-    return '<div class="transaction-item" data-id="' + tx.id + '">' +
-        '<div class="transaction-cat-icon ' + tx.type + '"><span>' + cat.icon + '</span></div>' +
-        '<div class="transaction-info">' +
-            '<div class="transaction-desc">' + escapeHTML(tx.description) + '</div>' +
-            '<div class="transaction-meta">' + formatDate(tx.date) + ' <span class="transaction-category">' + cat.label + '</span></div>' +
-        '</div>' +
-        '<span class="transaction-amount ' + tx.type + '">' + prefix + formatCurrency(tx.amount) + '</span>' +
-        '<button class="delete-btn" onclick="deleteTransaction(' + tx.id + ')" title="Eliminar">&times;</button>' +
-    '</div>';
+    return '<div class="transaction-item" data-id="' + tx.id + '"><div class="transaction-cat-icon ' + tx.type + '"><span>' + cat.icon + '</span></div><div class="transaction-info"><div class="transaction-desc">' + escapeHTML(tx.description) + '</div><div class="transaction-meta">' + formatDate(tx.date) + ' <span class="transaction-category">' + cat.label + '</span></div></div><span class="transaction-amount ' + tx.type + '">' + prefix + formatCurrency(tx.amount) + '</span><button class="delete-btn" onclick="deleteTransaction(' + tx.id + ')" title="Eliminar">&times;</button></div>';
 }
 
 async function deleteTransaction(id) {
     if (!confirm('¿Eliminar este movimiento?')) return;
-    try { await deleteTransactionAPI(id); } catch (err) { showToast('Error al eliminar: ' + err.message); return; }
-    updateAll();
-    showToast('Movimiento eliminado');
+    try { await deleteTransactionAPI(id); } catch (err) { showToast('Error: ' + err.message); return; }
+    updateAll(); showToast('Movimiento eliminado');
 }
 
 // ─── Categories page ───────────────────────────────────
@@ -979,22 +777,22 @@ function addCategoryFromManager() {
     input.focus();
 }
 
-// ─── Pattern button in header ──────────────────────────
-function updatePatternBtn() {
-    const btn = document.querySelector('.pattern-toggle-btn');
-    if (btn) btn.style.opacity = userPattern ? '1' : '0.5';
+// ─── PIN button in header ──────────────────────────────
+function updatePinBtn() {
+    const btn = document.querySelector('.pin-toggle-btn');
+    if (btn) btn.style.opacity = userPin ? '1' : '0.5';
 }
 
-(function addPatternBtn() {
+(function addPinBtn() {
     const headerTop = document.querySelector('.header-top');
     if (headerTop) {
         const btn = document.createElement('button');
-        btn.className = 'pattern-toggle-btn';
-        btn.textContent = '🔐';
+        btn.className = 'pin-toggle-btn';
+        btn.textContent = '🔢';
         btn.style.cssText = 'background:none;border:none;font-size:16px;cursor:pointer;padding:0 0 0 6px';
-        btn.title = 'Configurar patrón';
-        btn.onclick = togglePattern;
+        btn.title = 'Configurar PIN';
+        btn.onclick = togglePin;
         headerTop.appendChild(btn);
-        updatePatternBtn();
+        updatePinBtn();
     }
 })();
