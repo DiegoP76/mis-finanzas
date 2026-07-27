@@ -92,6 +92,7 @@ function checkPin() {
 }
 
 function showPin() {
+    document.getElementById('auth-screen').classList.add('hidden');
     const screen = document.getElementById('pin-screen');
     screen.classList.remove('hidden');
     document.getElementById('pin-error').textContent = '';
@@ -238,6 +239,7 @@ async function logout() {
 
 // ─── Auth UI ────────────────────────────────────────────
 function showAuth() {
+    document.getElementById('pin-screen').classList.add('hidden');
     document.getElementById('auth-screen').classList.remove('hidden');
     document.getElementById('app').classList.add('hidden');
 }
@@ -368,6 +370,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function initApp() {
+    hideAuth();
     populateCategories();
     setDefaultDate();
     setupForm();
