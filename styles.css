@@ -282,7 +282,12 @@ html, body {
     align-items: center;
     gap: 10px;
     box-shadow: var(--shadow);
-    cursor: default;
+    cursor: pointer;
+    transition: transform 0.1s;
+}
+
+.transaction-item:active {
+    transform: scale(0.98);
 }
 
 .transaction-cat-icon {

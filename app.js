@@ -322,6 +322,12 @@ async function deleteTransactionAPI(id) {
     transactions = transactions.filter(tx => tx.id !== id);
 }
 
+async function editTransactionAPI(id, data) {
+    await api(`/api/transactions/${id}`, { method: 'PUT', body: data });
+    const tx = transactions.find(t => t.id === id);
+    if (tx) { tx.type = data.type; tx.amount = data.amount; tx.category = data.category; tx.description = data.description; tx.date = data.date; }
+}
+
 async function addCategoryAPI(type, label, icon) {
     const data = await api('/api/categories', { method: 'POST', body: { type, label, icon: icon || '📌' } });
     const colors = { expense: '#A0A4B8', income: '#00B894' };
@@ -549,7 +555,7 @@ function renderTransactions() {
 function renderTransactionHTML(tx) {
     const cat = CATEGORY_MAP[tx.category] || { label: tx.category, icon: '📦' };
     const prefix = tx.type === 'expense' ? '-' : '+';
-    return '<div class="transaction-item" data-id="' + tx.id + '"><div class="transaction-cat-icon ' + tx.type + '"><span>' + cat.icon + '</span></div><div class="transaction-info"><div class="transaction-desc">' + escapeHTML(tx.description) + '</div><div class="transaction-meta">' + formatDate(tx.date) + ' <span class="transaction-category">' + cat.label + '</span></div></div><span class="transaction-amount ' + tx.type + '">' + prefix + formatCurrency(tx.amount) + '</span><button class="delete-btn" onclick="deleteTransaction(' + tx.id + ')" title="Eliminar">&times;</button></div>';
+    return '<div class="transaction-item" data-id="' + tx.id + '" onclick="openEditTx(' + tx.id + ')"><div class="transaction-cat-icon ' + tx.type + '"><span>' + cat.icon + '</span></div><div class="transaction-info"><div class="transaction-desc">' + escapeHTML(tx.description) + '</div><div class="transaction-meta">' + formatDate(tx.date) + ' <span class="transaction-category">' + cat.label + '</span></div></div><span class="transaction-amount ' + tx.type + '">' + prefix + formatCurrency(tx.amount) + '</span><button class="delete-btn" onclick="event.stopPropagation();deleteTransaction(' + tx.id + ')" title="Eliminar">&times;</button></div>';
 }
 
 async function deleteTransaction(id) {
@@ -557,6 +563,50 @@ async function deleteTransaction(id) {
     try { await deleteTransactionAPI(id); } catch (err) { showToast('Error: ' + err.message); return; }
     updateAll(); showToast('Movimiento eliminado');
 }
+
+let editTxType = 'expense';
+
+function openEditTx(id) {
+    const tx = transactions.find(t => t.id === id);
+    if (!tx) return;
+    editTxType = tx.type;
+    document.getElementById('edit-tx-modal').dataset.editId = id;
+    document.getElementById('edit-tx-amount').value = tx.amount;
+    document.getElementById('edit-tx-description').value = tx.description;
+    document.getElementById('edit-tx-date').value = tx.date;
+    const typeBtns = document.querySelectorAll('#edit-tx-form .type-btn');
+    typeBtns.forEach(b => b.classList.toggle('active', b.dataset.type === tx.type));
+    const sel = document.getElementById('edit-tx-category');
+    const cats = getAllCategories(tx.type);
+    sel.innerHTML = cats.map(c => '<option value="' + c.id + '"' + (c.id === tx.category ? ' selected' : '') + '>' + c.icon + ' ' + c.label + '</option>').join('');
+    document.getElementById('edit-tx-modal').classList.add('active');
+}
+
+function closeEditTx() { document.getElementById('edit-tx-modal').classList.remove('active'); }
+
+function setEditType(type) {
+    editTxType = type;
+    document.querySelectorAll('#edit-tx-form .type-btn').forEach(b => b.classList.toggle('active', b.dataset.type === type));
+    const sel = document.getElementById('edit-tx-category');
+    const cats = getAllCategories(type);
+    sel.innerHTML = cats.map(c => '<option value="' + c.id + '">' + c.icon + ' ' + c.label + '</option>').join('');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('edit-tx-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const id = parseInt(document.getElementById('edit-tx-modal').dataset.editId);
+        const data = {
+            type: editTxType,
+            amount: parseFloat(document.getElementById('edit-tx-amount').value),
+            category: document.getElementById('edit-tx-category').value,
+            description: document.getElementById('edit-tx-description').value,
+            date: document.getElementById('edit-tx-date').value
+        };
+        try { await editTransactionAPI(id, data); } catch (err) { showToast('Error: ' + err.message); return; }
+        closeEditTx(); updateAll(); showToast('Movimiento actualizado');
+    });
+});
 
 // ─── Categories page ───────────────────────────────────
 function renderCategories() {

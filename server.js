@@ -243,6 +243,28 @@ app.delete('/api/transactions/:id', requireAuth, async (req, res) => {
     }
 });
 
+app.put('/api/transactions/:id', requireAuth, async (req, res) => {
+    try {
+        const { type, amount, category, description, date } = req.body;
+        const id = parseInt(req.params.id);
+        if (db.isReady()) {
+            await db.getPool().query(
+                'UPDATE transactions SET type=$1, amount=$2, category=$3, description=$4, date=$5 WHERE id=$6 AND username=$7',
+                [type, amount, category, description || '', date || '', id, req.session.user]
+            );
+        } else {
+            const data = getUserData(req.session.user);
+            const tx = data.transactions.find(t => t.id === id);
+            if (tx) { tx.type = type; tx.amount = amount; tx.category = category; tx.description = description || ''; tx.date = date || ''; }
+            saveUserData(req.session.user, data);
+        }
+        res.json({ success: true, id, type, amount, category, description: description || '', date: date || '' });
+    } catch (err) {
+        console.error('Update transaction error:', err);
+        res.status(500).json({ error: 'Error del servidor' });
+    }
+});
+
 // ─── Categories ─────────────────────────────────────────
 app.get('/api/categories', requireAuth, async (req, res) => {
     try {
