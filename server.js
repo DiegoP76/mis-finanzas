@@ -39,6 +39,13 @@ function saveUserData(username, data) {
     fs.writeFileSync(getUserFile(username), JSON.stringify(data, null, 2));
 }
 
+function txFromRow(row) {
+    return { id: parseInt(row.id), type: row.type, amount: parseFloat(row.amount), category: row.category, description: row.description, date: row.date, createdAt: row.created_at };
+}
+function catFromRow(row) {
+    return { id: row.id, label: row.label, icon: row.icon, color: row.color };
+}
+
 function requireAuth(req, res, next) {
     if (!req.session.user) return res.status(401).json({ error: 'No autenticado' });
     next();
@@ -165,7 +172,7 @@ app.get('/api/transactions', requireAuth, async (req, res) => {
                 'SELECT * FROM transactions WHERE username = $1 ORDER BY created_at DESC',
                 [req.session.user]
             );
-            return res.json(result.rows);
+            return res.json(result.rows.map(txFromRow));
         }
         const data = getUserData(req.session.user);
         res.json(data.transactions);
@@ -222,7 +229,7 @@ app.get('/api/categories', requireAuth, async (req, res) => {
             );
             const grouped = { expense: [], income: [] };
             result.rows.forEach(c => {
-                if (grouped[c.type]) grouped[c.type].push(c);
+                if (grouped[c.type]) grouped[c.type].push(catFromRow(c));
             });
             return res.json(grouped);
         }
