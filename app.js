@@ -296,11 +296,10 @@ async function loadAllData() {
         customUserCategories = cats;
         userPin = pinData.pin || '';
         if (currentUser) {
+            localStorage.setItem('finanzas_last_user', currentUser);
             if (userPin) {
-                localStorage.setItem('finanzas_last_user', currentUser);
                 localStorage.setItem('finanzas_last_pin', userPin);
             } else {
-                localStorage.removeItem('finanzas_last_user');
                 localStorage.removeItem('finanzas_last_pin');
             }
         }
