@@ -169,12 +169,28 @@ async function checkSession() {
             await loadAllData();
             if (userPin) showPin(); else initApp();
         } else if (lastUser && lastPin) {
-            currentUser = lastUser; userPin = lastPin;
-            showPin();
+            try {
+                const loginData = await api('/api/pin/login', { method: 'POST', body: { username: lastUser, pin: lastPin } });
+                currentUser = loginData.username;
+                await loadAllData();
+                showPin();
+            } catch {
+                currentUser = lastUser; userPin = lastPin;
+                showPin();
+            }
         } else { showAuth(); }
     } catch {
-        if (lastUser && lastPin) { currentUser = lastUser; userPin = lastPin; showPin(); }
-        else { showAuth(); }
+        if (lastUser && lastPin) {
+            try {
+                const loginData = await api('/api/pin/login', { method: 'POST', body: { username: lastUser, pin: lastPin } });
+                currentUser = loginData.username;
+                await loadAllData();
+                showPin();
+            } catch {
+                currentUser = lastUser; userPin = lastPin;
+                showPin();
+            }
+        } else { showAuth(); }
     }
 }
 

@@ -164,6 +164,30 @@ app.delete('/api/pin', requireAuth, async (req, res) => {
     }
 });
 
+app.post('/api/pin/login', async (req, res) => {
+    try {
+        const { username, pin } = req.body;
+        if (!username || !pin) return res.status(400).json({ error: 'Usuario y PIN requeridos' });
+        let storedPin = '';
+        if (db.isReady()) {
+            const result = await db.getPool().query('SELECT pin FROM users WHERE username = $1', [username]);
+            if (result.rows.length === 0) return res.status(401).json({ error: 'Usuario no encontrado' });
+            storedPin = result.rows[0].pin || '';
+        } else {
+            const users = getUsers();
+            if (!users[username]) return res.status(401).json({ error: 'Usuario no encontrado' });
+            const data = getUserData(username);
+            storedPin = data.pattern || '';
+        }
+        if (pin !== storedPin) return res.status(401).json({ error: 'PIN incorrecto' });
+        req.session.user = username;
+        res.json({ success: true, username });
+    } catch (err) {
+        console.error('PIN login error:', err);
+        res.status(500).json({ error: 'Error del servidor' });
+    }
+});
+
 // ─── Transactions ───────────────────────────────────────
 app.get('/api/transactions', requireAuth, async (req, res) => {
     try {
