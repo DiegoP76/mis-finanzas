@@ -1,6 +1,7 @@
-Mis Finanzas v4.0.0
-====================
+Mis Finanzas v4.1.0 ✅ ESTABLE
+=================================
 Fecha: Julio 2026
+Estado: Funcional — probado y verificado
 
 App web de finanzas personales multi-usuario con servidor Express y PostgreSQL.
 
@@ -8,5 +9,19 @@ v1.0.0 - Versión inicial con localStorage (single-user)
 v2.0.0 - Multi-usuario con archivos JSON
 v3.0.0 - Autenticación, PIN y categorías customizables
 v4.0.0 - Migración a PostgreSQL (Railway)
+v4.1.0 - Quick access: PIN numérico 3 dígitos, auto-login por PIN (sin usuario/contraseña en el mismo dispositivo)
+
+Funcionalidades confirmadas:
+- Registro y login con usuario/contraseña
+- PIN numérico 3 dígitos (teclado en pantalla)
+- Auto-login por PIN (nunca más pedir usuario/contraseña en el mismo dispositivo)
+- Transacciones CRUD (ingresos/gastos)
+- Categorías customizables (fijas + propias)
+- Dashboard con gráficos y estadísticas
+- Multi-usuario con datos aislados
+- Persistencia en PostgreSQL (Railway)
+
+Despliegue: https://mis-finanzas-production-2971.up.railway.app
+Repositorio: https://github.com/DiegoP76/mis-finanzas.git
 
 Para iniciar: node server.js  (luego abrir http://localhost:3000)
