@@ -64,6 +64,7 @@
 
                 <div style="text-align:center;margin-bottom:16px">
                     <button class="text-btn" onclick="navigateTo('stats')" style="font-size:14px">📊 Estadísticas completas</button>
+                    <br><button class="text-btn ai-btn" onclick="navigateTo('stats');setTimeout(()=>document.getElementById('ai-insights').scrollIntoView({behavior:'smooth'}),300)" style="font-size:14px;margin-top:6px">🤖 Consejos IA</button>
                 </div>
 
                 <div class="section-header">
@@ -215,6 +216,13 @@
                     <h3>Principales Gastos</h3>
                 </div>
                 <div id="stats-top-expenses" class="transactions-list" style="margin-bottom:20px"></div>
+
+                <!-- Consejos IA -->
+                <div class="section-header" style="margin-top:8px">
+                    <h3>🤖 Consejos IA</h3>
+                </div>
+                <p class="page-subtitle">Análisis inteligente de tus finanzas</p>
+                <div id="ai-insights" class="ai-insights-list"></div>
             </section>
 
             <!-- Categories -->

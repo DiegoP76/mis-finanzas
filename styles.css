@@ -1286,3 +1286,70 @@ html, body {
     border-color: var(--primary);
     color: var(--primary);
 }
+
+/* ─── AI Insights ─────────────────────────────────────── */
+.ai-btn {
+    background: linear-gradient(135deg, var(--primary), #a78bfa);
+    color: #fff !important;
+    border: none !important;
+    border-radius: var(--radius-sm);
+    padding: 6px 14px !important;
+    font-weight: 600;
+}
+
+.ai-btn:hover { opacity: 0.9; }
+
+.ai-insights-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 24px;
+}
+
+.ai-card {
+    background: var(--surface);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    box-shadow: var(--shadow);
+    border-left: 4px solid var(--primary);
+}
+
+.ai-card.positive { border-left-color: var(--income); }
+.ai-card.warning  { border-left-color: var(--expense); }
+.ai-card.info     { border-left-color: #448AFF; }
+.ai-card.tip      { border-left-color: #FFC107; }
+
+.ai-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.ai-card-icon { font-size: 20px; }
+
+.ai-card-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.ai-card-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.ai-card-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--primary);
+    margin-top: 6px;
+}
+
+.ai-empty {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 24px 0;
+    font-size: 14px;
+}

@@ -669,7 +669,96 @@ function getStatsTxs() {
     return transactions.filter(tx => { const d = parseDate(tx.date); return d >= from && d <= to; });
 }
 
-function renderStats() { const txs = getStatsTxs(); updateStatsSummary(txs); updateStatsBarChart(txs); updateStatsDonutChart(txs); updateStatsTrendChart(txs); updateStatsProjection(txs); renderTopExpenses(txs); }
+function renderStats() { const txs = getStatsTxs(); updateStatsSummary(txs); updateStatsBarChart(txs); updateStatsDonutChart(txs); updateStatsTrendChart(txs); updateStatsProjection(txs); renderTopExpenses(txs); renderInsights(txs); }
+
+function generateInsights(txs) {
+    if (!txs.length) return [];
+    const insights = [];
+    const income = txs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const expense = txs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const balance = income - expense;
+    const savingsRate = income > 0 ? ((balance / income) * 100) : 0;
+
+    if (savingsRate >= 20) {
+        insights.push({ icon: '🎉', title: 'Excelente tasa de ahorro', desc: 'Estás ahorrando el ' + Math.round(savingsRate) + '% de tus ingresos. Esto te da un margen sólido para crecer financieramente.', type: 'positive', value: Math.round(savingsRate) + '%' });
+    } else if (savingsRate >= 10) {
+        insights.push({ icon: '👍', title: 'Buen ahorro, pero podés mejorar', desc: 'Tu tasa de ahorro es del ' + Math.round(savingsRate) + '%. Intentá llegar al 20% reduciendo gastos en categorías donde más gastás.', type: 'info', value: Math.round(savingsRate) + '%' });
+    } else if (savingsRate > 0) {
+        insights.push({ icon: '⚠️', title: 'Ahorro bajo', desc: 'Solo ahorrás el ' + Math.round(savingsRate) + '% de tus ingresos. Tratá de reducir gastos fijos o buscar ingresos extra.', type: 'warning', value: Math.round(savingsRate) + '%' });
+    } else {
+        insights.push({ icon: '🚨', title: 'Gastás más de lo que ingresás', desc: 'Estás en déficit de ' + formatCurrency(Math.abs(balance)) + '. Es urgente reducir gastos o aumentar ingresos.', type: 'warning', value: '-' + formatCurrency(Math.abs(balance)) });
+    }
+
+    const expenses = txs.filter(t => t.type === 'expense');
+    let sorted = [];
+    if (expenses.length > 0) {
+        const byCat = {};
+        expenses.forEach(t => { byCat[t.category] = (byCat[t.category] || 0) + t.amount; });
+        sorted = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
+        const [topCat, topAmt] = sorted[0];
+        const catObj = CATEGORY_MAP[topCat] || { label: topCat, icon: '📦' };
+        const pct = expense > 0 ? Math.round((topAmt / expense) * 100) : 0;
+        insights.push({ icon: catObj.icon, title: 'Mayor gasto: ' + catObj.label, desc: 'Concentrás el ' + pct + '% de tus expensas en esta categoría (' + formatCurrency(topAmt) + '). Si es innecesario, considerá reducirlo.', type: 'tip', value: formatCurrency(topAmt) });
+    }
+
+    if (sorted && sorted.length >= 2) {
+        const [secondCat, secondAmt] = sorted[1];
+        const secObj = CATEGORY_MAP[secondCat] || { label: secondCat, icon: '📦' };
+        if (expense > 0 && (secondAmt / expense) > 0.15) {
+            insights.push({ icon: '📊', title: 'Segundo gasto alto: ' + secObj.label, desc: 'Esta categoría consume el ' + Math.round((secondAmt / expense) * 100) + '% de tus gastos. Evaluá si podés optimizar este rubro.', type: 'info', value: formatCurrency(secondAmt) });
+        }
+    }
+
+    const months = {};
+    txs.forEach(t => {
+        const d = parseDate(t.date);
+        const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+        if (!months[key]) months[key] = { income: 0, expense: 0 };
+        if (t.type === 'income') months[key].income += t.amount; else months[key].expense += t.amount;
+    });
+    const monthKeys = Object.keys(months).sort();
+    if (monthKeys.length >= 2) {
+        const prev = months[monthKeys[monthKeys.length - 2]];
+        const curr = months[monthKeys[monthKeys.length - 1]];
+        if (curr.expense > prev.expense * 1.2) {
+            insights.push({ icon: '📈', title: 'Gastos subieron este mes', desc: 'Tus gastos crecieron un ' + Math.round(((curr.expense - prev.expense) / prev.expense) * 100) + '% comparado con el mes anterior. Revisá qué cambió.', type: 'warning', value: '+' + formatCurrency(curr.expense - prev.expense) });
+        } else if (curr.expense < prev.expense * 0.8) {
+            insights.push({ icon: '📉', title: 'Bajaron tus gastos', desc: 'Reduciste tus gastos un ' + Math.round(((prev.expense - curr.expense) / prev.expense) * 100) + '% respecto al mes anterior. ¡Sigue así!', type: 'positive', value: '-' + formatCurrency(prev.expense - curr.expense) });
+        }
+    }
+
+    if (balance > 0) {
+        const emergencyFund = expense / 3;
+        if (balance >= emergencyFund) {
+            insights.push({ icon: '🛡️', title: 'Fondo de emergencia', desc: 'Con tu saldo actual cubrís approx. ' + Math.round(balance / (expense / 30)) + ' días de gastos. Se recomienda tener 90 días como mínimo.', type: 'tip', value: formatCurrency(balance) });
+        } else {
+            const needed = emergencyFund - balance;
+            insights.push({ icon: '🛡️', title: 'Construí tu fondo de emergencia', desc: 'Te faltan ' + formatCurrency(needed) + ' para tener 3 meses de gastos cubiertos. Es tu prioridad #1.', type: 'warning', value: formatCurrency(needed) });
+        }
+    }
+
+    const hasIncome = txs.some(t => t.type === 'income');
+    if (!hasIncome) {
+        insights.push({ icon: '💡', title: 'Registrá tus ingresos', desc: 'No tenés ingresos registrados. Agregalos para obtener análisis más precisos y mejores consejos.', type: 'tip' });
+    }
+
+    const dailyExpense = expense / (statsFrom && statsTo ? Math.max(1, Math.round((parseDate(statsTo) - parseDate(statsFrom)) / 86400000) + 1) : 30);
+    insights.push({ icon: '📅', title: 'Gasto promedio diario', desc: 'Gastás approx. ' + formatCurrency(dailyExpense) + ' por día. A fin de mes serían ' + formatCurrency(dailyExpense * 30) + '.', type: 'info', value: formatCurrency(dailyExpense) + '/día' });
+
+    if (balance > expense * 0.5) {
+        insights.push({ icon: '💰', title: 'Podés invertir', desc: 'Tenés un saldo de ' + formatCurrency(balance) + '. Considerá invertirlo en plazo fijo, CEDEARs, o un FCI de renta fija para que crezca.', type: 'tip', value: formatCurrency(balance) });
+    }
+
+    return insights;
+}
+
+function renderInsights(txs) {
+    const container = document.getElementById('ai-insights');
+    if (!container) return;
+    const insights = generateInsights(txs);
+    if (!insights.length) { container.innerHTML = '<p class="ai-empty">Registá movimientos para ver consejos personalizados</p>'; return; }
+    container.innerHTML = insights.map(i => '<div class="ai-card ' + i.type + '"><div class="ai-card-header"><span class="ai-card-icon">' + i.icon + '</span><span class="ai-card-title">' + i.title + '</span></div><div class="ai-card-desc">' + i.desc + '</div>' + (i.value ? '<div class="ai-card-value">' + i.value + '</div>' : '') + '</div>').join('');
+}
 
 function updateStatsSummary(txs) {
     const income = txs.filter(tx => tx.type === 'income').reduce((s, t) => s + t.amount, 0);
