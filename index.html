@@ -266,20 +266,36 @@
         </nav>
     </div>
 
-    <!-- Pattern Lock -->
-    <div id="pattern-screen" class="pattern-overlay">
-        <div class="pattern-box">
-            <div class="pattern-icon">🔐</div>
-            <h2 class="pattern-title" id="pattern-title">Dibujá tu patrón</h2>
-            <p class="pattern-subtitle" id="pattern-subtitle"></p>
-            <div class="pattern-grid-container">
-                <svg class="pattern-svg" width="260" height="260"></svg>
+    <!-- PIN Screen -->
+    <div id="pin-screen" class="pin-overlay hidden">
+        <div class="pin-box">
+            <div class="pin-icon">🔐</div>
+            <h2 class="pin-title" id="pin-title">Ingresá tu PIN</h2>
+            <p class="pin-subtitle" id="pin-subtitle"></p>
+            <div class="pin-dots">
+                <span class="pin-dot"></span>
+                <span class="pin-dot"></span>
+                <span class="pin-dot"></span>
             </div>
-            <p id="pattern-error" class="pattern-error"></p>
-            <div id="pattern-setup-container" style="display:none">
-                <button class="skip-btn" onclick="skipPattern()">Omitir</button>
+            <p id="pin-error" class="pin-error"></p>
+            <div class="pin-keypad">
+                <button class="pin-key" onclick="pinPress('1')">1</button>
+                <button class="pin-key" onclick="pinPress('2')">2</button>
+                <button class="pin-key" onclick="pinPress('3')">3</button>
+                <button class="pin-key" onclick="pinPress('4')">4</button>
+                <button class="pin-key" onclick="pinPress('5')">5</button>
+                <button class="pin-key" onclick="pinPress('6')">6</button>
+                <button class="pin-key" onclick="pinPress('7')">7</button>
+                <button class="pin-key" onclick="pinPress('8')">8</button>
+                <button class="pin-key" onclick="pinPress('9')">9</button>
+                <button class="pin-key pin-key-blank"></button>
+                <button class="pin-key" onclick="pinPress('0')">0</button>
+                <button class="pin-key pin-key-del" onclick="pinDelete()">⌫</button>
             </div>
-            <button id="pattern-switch-user" class="text-btn" onclick="switchPatternUser()" style="margin-top:8px;font-size:13px">Usar otra cuenta</button>
+            <div id="pin-setup-container" style="display:none">
+                <button class="skip-btn" onclick="skipPin()">Omitir</button>
+            </div>
+            <button id="pin-switch-user" class="text-btn" onclick="switchPinUser()" style="margin-top:8px;font-size:13px;display:none">Usar otra cuenta</button>
         </div>
     </div>
 
