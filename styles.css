@@ -44,13 +44,11 @@ html, body {
     position: relative;
 }
 
-<<<<<<< HEAD
+
 #app.hidden {
     display: none;
 }
 
-=======
->>>>>>> 035f997725ae977c4bce0123c2b21b667a6d8162
 #app.add-mode #header {
     display: none;
 }
@@ -76,7 +74,6 @@ html, body {
     color: var(--primary);
 }
 
-<<<<<<< HEAD
 .header-right {
     display: flex;
     align-items: center;
@@ -92,15 +89,12 @@ html, body {
     border-radius: 6px;
 }
 
-=======
->>>>>>> 035f997725ae977c4bce0123c2b21b667a6d8162
 .header-date {
     font-size: 13px;
     color: var(--text-muted);
     font-weight: 500;
 }
 
-<<<<<<< HEAD
 .header-logout {
     background: none;
     border: none;
@@ -115,8 +109,6 @@ html, body {
     opacity: 1;
 }
 
-=======
->>>>>>> 035f997725ae977c4bce0123c2b21b667a6d8162
 .balance-container {
     text-align: center;
     margin-bottom: 10px;

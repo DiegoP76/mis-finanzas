@@ -1,27 +1,12 @@
-<<<<<<< HEAD
-Mis Finanzas v3.0.0
+Mis Finanzas v4.0.0
 ====================
 Fecha: Julio 2026
 
-App web de finanzas personales multi-usuario con servidor Express.
+App web de finanzas personales multi-usuario con servidor Express y PostgreSQL.
 
 v1.0.0 - Versión inicial con localStorage (single-user)
-v2.0.0 - Multi-usuario con servidor Express (revertido a single-user)
-v3.0.0 - Multi-usuario con servidor Express, autenticación y PIN por usuario
-
-Para iniciar: node server.js (luego abrir http://localhost:3000)
-=======
-Mis Finanzas v2.0.0
-====================
-Fecha: Julio 2026
-
-App web de finanzas personales multi-usuario.
-- Servidor Express con autenticación por usuario
-- Cada usuario tiene sus datos separados
-- Datos persistidos en archivos JSON (carpeta data/)
-
-v1.0.0 - Versión inicial con localStorage
-v2.0.0 - Multi-usuario con servidor y autenticación
+v2.0.0 - Multi-usuario con archivos JSON
+v3.0.0 - Autenticación, PIN y categorías customizables
+v4.0.0 - Migración a PostgreSQL (Railway)
 
 Para iniciar: node server.js  (luego abrir http://localhost:3000)
->>>>>>> 035f997725ae977c4bce0123c2b21b667a6d8162
