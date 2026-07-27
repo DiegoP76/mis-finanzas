@@ -83,20 +83,20 @@ app.get('/api/me', (req, res) => {
     res.json({ user: req.session.user });
 });
 
-// ─── Pattern ────────────────────────────────────────────
-app.get('/api/pattern', requireAuth, (req, res) => {
+// ─── PIN ────────────────────────────────────────────────
+app.get('/api/pin', requireAuth, (req, res) => {
     const data = getUserData(req.session.user);
-    res.json({ hasPattern: !!data.pattern, pattern: data.pattern || '' });
+    res.json({ hasPin: !!data.pattern, pin: data.pattern || '' });
 });
 
-app.post('/api/pattern', requireAuth, (req, res) => {
+app.post('/api/pin', requireAuth, (req, res) => {
     const data = getUserData(req.session.user);
-    data.pattern = req.body.pattern || '';
+    data.pattern = req.body.pin || '';
     saveUserData(req.session.user, data);
     res.json({ success: true });
 });
 
-app.delete('/api/pattern', requireAuth, (req, res) => {
+app.delete('/api/pin', requireAuth, (req, res) => {
     const data = getUserData(req.session.user);
     data.pattern = '';
     saveUserData(req.session.user, data);
