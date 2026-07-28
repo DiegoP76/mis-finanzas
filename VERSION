@@ -1,4 +1,4 @@
-Mis Finanzas v5.0.0 ✅ ESTABLE
+Mis Finanzas v5.1.0 ✅ ESTABLE
 =================================
 Fecha: 27 Julio 2026
 Estado: Funcional — probado y verificado
@@ -12,8 +12,9 @@ v3.0.0 - Autenticación, PIN y categorías customizables
 v4.0.0 - Migración a PostgreSQL (Railway)
 v4.1.0 - Quick access: PIN numérico 3 dígitos, auto-login por PIN
 v5.0.0 - Edición de transacciones, Consejos IA
+v5.1.0 - Selector de mes global para filtrar Dashboard, Movimientos y Categorías
 
-─── Funcionalidades v5.0.0 ─────────────────────────────
+─── Funcionalidades v5.1.0 ─────────────────────────────
 ✅ Registro y login con usuario/contraseña
 ✅ PIN numérico 3 dígitos (teclado en pantalla)
 ✅ Auto-login por PIN (nunca más pedir usuario/contraseña)
@@ -23,6 +24,7 @@ v5.0.0 - Edición de transacciones, Consejos IA
 ✅ Dashboard con gráficos (gastos por categoría, ingresos vs gastos)
 ✅ Estadísticas completas (resumen, barra, tendencia, proyección)
 ✅ Consejos IA (análisis inteligente de finanzas personales)
+✅ Selector de mes: filtrar por mes específico o ver todos
 ✅ Multi-usuario con datos aislados
 ✅ Persistencia en PostgreSQL (Railway)
 
@@ -52,7 +54,7 @@ Deploy:   Railway.app (auto-deploy from main)
 ─── Enlaces ─────────────────────────────────────────────
 Despliegue: https://mis-finanzas-production-2971.up.railway.app
 Repositorio: https://github.com/DiegoP76/mis-finanzas.git
-Tag:         v5.0.0
+Tag:         v5.1.0
 
 ─── Para iniciar localmente ─────────────────────────────
 node server.js
