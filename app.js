@@ -28,8 +28,69 @@ let userPin = '';
 let expenseChart = null;
 let monthlyChart = null;
 let currentFilter = 'all';
+let currentMonth = getDefaultMonth();
 
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const MONTH_SHORT = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+function getDefaultMonth() {
+    const now = new Date();
+    return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+}
+
+function getAvailableMonths() {
+    const months = new Set();
+    transactions.forEach(tx => {
+        const d = parseDate(tx.date);
+        months.add(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'));
+    });
+    return [...months].sort();
+}
+
+function filterByMonth(txs) {
+    if (currentMonth === 'all') return txs;
+    const [y, m] = currentMonth.split('-').map(Number);
+    return txs.filter(tx => {
+        const d = parseDate(tx.date);
+        return d.getFullYear() === y && d.getMonth() === m - 1;
+    });
+}
+
+function setMonthFilter(month) {
+    currentMonth = month;
+    updateMonthLabel();
+    updateAll();
+}
+
+function updateMonthLabel() {
+    const label = document.getElementById('month-label');
+    if (currentMonth === 'all') {
+        label.textContent = 'Todos los meses';
+    } else {
+        const [y, m] = currentMonth.split('-').map(Number);
+        label.textContent = MONTHS[m - 1] + ' ' + y;
+    }
+}
+
+function populateMonthSelector() {
+    const select = document.getElementById('month-select');
+    const available = getAvailableMonths();
+    const now = new Date();
+    const current = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    select.innerHTML = '';
+    available.forEach(m => {
+        const [y, mo] = m.split('-').map(Number);
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = MONTH_SHORT[mo - 1] + ' ' + y;
+        select.appendChild(opt);
+    });
+    const allOpt = document.createElement('option');
+    allOpt.value = 'all';
+    allOpt.textContent = 'Todos los meses';
+    select.appendChild(allOpt);
+    select.value = currentMonth;
+}
 
 // ─── API helper ─────────────────────────────────────────
 async function api(url, options = {}) {
@@ -382,6 +443,7 @@ function initApp() {
     setupForm();
     setupTypeToggle();
     updateDate();
+    updateMonthLabel();
     updateAll();
     setPeriod('this-month');
 }
@@ -390,9 +452,10 @@ function initApp() {
 function updateDate() {
     const now = new Date();
     document.getElementById('current-date').textContent = now.getDate() + ' ' + MONTHS[now.getMonth()] + ' ' + now.getFullYear();
-    document.getElementById('month-label').textContent = MONTHS[now.getMonth()] + ' ' + now.getFullYear();
     const userEl = document.getElementById('current-user');
     if (userEl && currentUser) userEl.textContent = currentUser;
+    updateMonthLabel();
+    populateMonthSelector();
 }
 
 function setDefaultDate() {
@@ -471,23 +534,20 @@ function filterTransactions(filter) {
     renderTransactions();
 }
 
-function updateAll() { updateDashboard(); renderTransactions(); renderCategories(); }
+function updateAll() { populateMonthSelector(); updateDashboard(); renderTransactions(); renderCategories(); }
 
 // ─── Dashboard ──────────────────────────────────────────
 function updateDashboard() {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-    const monthTxs = transactions.filter(tx => { const d = parseDate(tx.date); return d.getMonth() === currentMonth && d.getFullYear() === currentYear; });
-    const totalIncome = transactions.filter(tx => tx.type === 'income').reduce((s, t) => s + t.amount, 0);
-    const totalExpense = transactions.filter(tx => tx.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const filtered = filterByMonth(transactions);
+    const totalIncome = filtered.filter(tx => tx.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const totalExpense = filtered.filter(tx => tx.type === 'expense').reduce((s, t) => s + t.amount, 0);
     const balance = totalIncome - totalExpense;
     document.getElementById('total-balance').textContent = formatCurrency(balance);
     document.getElementById('total-balance').style.color = balance >= 0 ? '#00B894' : '#FF6B6B';
     document.getElementById('quick-income').textContent = formatCurrency(totalIncome);
     document.getElementById('quick-expense').textContent = formatCurrency(totalExpense);
-    document.getElementById('quick-count').textContent = transactions.length;
-    updateExpenseChart(monthTxs);
+    document.getElementById('quick-count').textContent = filtered.length;
+    updateExpenseChart(filtered);
     updateMonthlyChart();
     renderRecentTransactions();
 }
@@ -527,7 +587,8 @@ function updateMonthlyChart() {
 
 function renderRecentTransactions() {
     const container = document.getElementById('recent-transactions');
-    const sorted = [...transactions].sort((a, b) => parseDate(b.date) - parseDate(a.date));
+    const filtered = filterByMonth(transactions);
+    const sorted = [...filtered].sort((a, b) => parseDate(b.date) - parseDate(a.date));
     const recent = sorted.slice(0, 5);
     container.innerHTML = recent.length ? recent.map(tx => renderTransactionHTML(tx)).join('') : '<p style="text-align:center;color:var(--text-muted);padding:24px 0;font-size:14px">No hay movimientos aún</p>';
 }
@@ -535,7 +596,7 @@ function renderRecentTransactions() {
 // ─── Transactions list ─────────────────────────────────
 function renderTransactions() {
     const container = document.getElementById('all-transactions');
-    let filtered = [...transactions];
+    let filtered = filterByMonth(transactions);
     if (currentFilter === 'income') filtered = filtered.filter(tx => tx.type === 'income');
     else if (currentFilter === 'expense') filtered = filtered.filter(tx => tx.type === 'expense');
     filtered.sort((a, b) => parseDate(b.date) - parseDate(a.date));
@@ -611,7 +672,8 @@ document.addEventListener('DOMContentLoaded', () => {
 // ─── Categories page ───────────────────────────────────
 function renderCategories() {
     const container = document.getElementById('categories-grid');
-    const expenseTxs = transactions.filter(tx => tx.type === 'expense');
+    const filtered = filterByMonth(transactions);
+    const expenseTxs = filtered.filter(tx => tx.type === 'expense');
     const totalExpense = expenseTxs.reduce((s, t) => s + t.amount, 0);
     if (!expenseTxs.length) { container.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:40px 0;font-size:14px">Sin gastos registrados</p>'; return; }
     const byCategory = {};

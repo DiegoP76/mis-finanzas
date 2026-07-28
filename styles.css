@@ -169,6 +169,35 @@ html, body {
     color: var(--expense);
 }
 
+/* Month selector */
+.month-selector {
+    margin-bottom: 10px;
+}
+
+.month-selector select {
+    width: 100%;
+    padding: 10px 14px;
+    border: 2px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+    color: var(--primary);
+    background: var(--primary-light);
+    outline: none;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236C63FF' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+}
+
+.month-selector select:focus {
+    border-color: var(--primary);
+}
+
 /* Main content */
 #main-content {
     flex: 1;
