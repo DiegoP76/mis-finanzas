@@ -1,27 +1,60 @@
-Mis Finanzas v4.1.0 ✅ ESTABLE
+Mis Finanzas v5.0.0 ✅ ESTABLE
 =================================
-Fecha: Julio 2026
+Fecha: 27 Julio 2026
 Estado: Funcional — probado y verificado
 
 App web de finanzas personales multi-usuario con servidor Express y PostgreSQL.
 
+─── Changelog ───────────────────────────────────────────
 v1.0.0 - Versión inicial con localStorage (single-user)
 v2.0.0 - Multi-usuario con archivos JSON
 v3.0.0 - Autenticación, PIN y categorías customizables
 v4.0.0 - Migración a PostgreSQL (Railway)
-v4.1.0 - Quick access: PIN numérico 3 dígitos, auto-login por PIN (sin usuario/contraseña en el mismo dispositivo)
+v4.1.0 - Quick access: PIN numérico 3 dígitos, auto-login por PIN
+v5.0.0 - Edición de transacciones, Consejos IA
 
-Funcionalidades confirmadas:
-- Registro y login con usuario/contraseña
-- PIN numérico 3 dígitos (teclado en pantalla)
-- Auto-login por PIN (nunca más pedir usuario/contraseña en el mismo dispositivo)
-- Transacciones CRUD (ingresos/gastos)
-- Categorías customizables (fijas + propias)
-- Dashboard con gráficos y estadísticas
-- Multi-usuario con datos aislados
-- Persistencia en PostgreSQL (Railway)
+─── Funcionalidades v5.0.0 ─────────────────────────────
+✅ Registro y login con usuario/contraseña
+✅ PIN numérico 3 dígitos (teclado en pantalla)
+✅ Auto-login por PIN (nunca más pedir usuario/contraseña)
+✅ Transacciones CRUD (crear, leer, editar, eliminar)
+✅ Edición de movimientos (monto, categoría, descripción, fecha)
+✅ Categorías customizables (fijas + propias)
+✅ Dashboard con gráficos (gastos por categoría, ingresos vs gastos)
+✅ Estadísticas completas (resumen, barra, tendencia, proyección)
+✅ Consejos IA (análisis inteligente de finanzas personales)
+✅ Multi-usuario con datos aislados
+✅ Persistencia en PostgreSQL (Railway)
 
+─── API Endpoints ───────────────────────────────────────
+POST   /api/register        - Crear usuario
+POST   /api/login           - Iniciar sesión
+POST   /api/logout          - Cerrar sesión
+GET    /api/me              - Verificar sesión activa
+GET    /api/pin             - Obtener PIN del usuario
+POST   /api/pin             - Crear/actualizar PIN
+DELETE /api/pin             - Eliminar PIN
+POST   /api/pin/login       - Login por PIN (sin sesión)
+GET    /api/transactions    - Listar movimientos
+POST   /api/transactions    - Crear movimiento
+PUT    /api/transactions/:id - Editar movimiento
+DELETE /api/transactions/:id - Eliminar movimiento
+GET    /api/categories      - Listar categorías custom
+POST   /api/categories      - Crear categoría custom
+DELETE /api/categories/:type/:id - Eliminar categoría custom
+
+─── Stack ───────────────────────────────────────────────
+Frontend: HTML, CSS, JavaScript vanilla, Chart.js
+Backend:  Node.js, Express, express-session, bcryptjs, pg
+Database: PostgreSQL (Railway)
+Deploy:   Railway.app (auto-deploy from main)
+
+─── Enlaces ─────────────────────────────────────────────
 Despliegue: https://mis-finanzas-production-2971.up.railway.app
 Repositorio: https://github.com/DiegoP76/mis-finanzas.git
+Tag:         v5.0.0
 
-Para iniciar: node server.js  (luego abrir http://localhost:3000)
+─── Para iniciar localmente ─────────────────────────────
+node server.js
+Luego abrir http://localhost:3000
+Requiere variable de entorno DATABASE_URL para PostgreSQL
