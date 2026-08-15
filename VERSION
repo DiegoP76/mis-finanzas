@@ -1,9 +1,9 @@
-Mis Finanzas v5.1.0 ✅ ESTABLE
+Mis Finanzas v6.0.0 ✅ ESTABLE
 =================================
-Fecha: 27 Julio 2026
-Estado: Funcional — probado y verificado
+Fecha: 15 Agosto 2026
+Estado: Funcional — migrado a Supabase + Vercel
 
-App web de finanzas personales multi-usuario con servidor Express y PostgreSQL.
+App web de finanzas personales multi-usuario. Frontend estático + Supabase (DB + Auth).
 
 ─── Changelog ───────────────────────────────────────────
 v1.0.0 - Versión inicial con localStorage (single-user)
@@ -12,10 +12,11 @@ v3.0.0 - Autenticación, PIN y categorías customizables
 v4.0.0 - Migración a PostgreSQL (Railway)
 v4.1.0 - Quick access: PIN numérico 3 dígitos, auto-login por PIN
 v5.0.0 - Edición de transacciones, Consejos IA
-v5.1.0 - Selector de mes global para filtrar Dashboard, Movimientos y Categorías
+v5.1.0 - Selector de mes global
+v6.0.0 - Migración a Supabase + Vercel (sin servidor Express)
 
-─── Funcionalidades v5.1.0 ─────────────────────────────
-✅ Registro y login con usuario/contraseña
+─── Funcionalidades v6.0.0 ─────────────────────────────
+✅ Registro y login con usuario/contraseña (bcrypt)
 ✅ PIN numérico 3 dígitos (teclado en pantalla)
 ✅ Auto-login por PIN (nunca más pedir usuario/contraseña)
 ✅ Transacciones CRUD (crear, leer, editar, eliminar)
@@ -26,37 +27,15 @@ v5.1.0 - Selector de mes global para filtrar Dashboard, Movimientos y Categoría
 ✅ Consejos IA (análisis inteligente de finanzas personales)
 ✅ Selector de mes: filtrar por mes específico o ver todos
 ✅ Multi-usuario con datos aislados
-✅ Persistencia en PostgreSQL (Railway)
+✅ Persistencia en PostgreSQL (Supabase)
 
-─── API Endpoints ───────────────────────────────────────
-POST   /api/register        - Crear usuario
-POST   /api/login           - Iniciar sesión
-POST   /api/logout          - Cerrar sesión
-GET    /api/me              - Verificar sesión activa
-GET    /api/pin             - Obtener PIN del usuario
-POST   /api/pin             - Crear/actualizar PIN
-DELETE /api/pin             - Eliminar PIN
-POST   /api/pin/login       - Login por PIN (sin sesión)
-GET    /api/transactions    - Listar movimientos
-POST   /api/transactions    - Crear movimiento
-PUT    /api/transactions/:id - Editar movimiento
-DELETE /api/transactions/:id - Eliminar movimiento
-GET    /api/categories      - Listar categorías custom
-POST   /api/categories      - Crear categoría custom
-DELETE /api/categories/:type/:id - Eliminar categoría custom
-
-─── Stack ───────────────────────────────────────────────
-Frontend: HTML, CSS, JavaScript vanilla, Chart.js
-Backend:  Node.js, Express, express-session, bcryptjs, pg
-Database: PostgreSQL (Railway)
-Deploy:   Railway.app (auto-deploy from main)
+─── Stack v6.0.0 ───────────────────────────────────────
+Frontend: HTML, CSS, JavaScript vanilla, Chart.js, Supabase JS Client
+Database: PostgreSQL (Supabase)
+Deploy:   Vercel (static hosting)
 
 ─── Enlaces ─────────────────────────────────────────────
-Despliegue: https://mis-finanzas-production-2971.up.railway.app
+Despliegue: (pendiente Vercel)
 Repositorio: https://github.com/DiegoP76/mis-finanzas.git
-Tag:         v5.1.0
-
-─── Para iniciar localmente ─────────────────────────────
-node server.js
-Luego abrir http://localhost:3000
-Requiere variable de entorno DATABASE_URL para PostgreSQL
+Supabase:   https://iulwhewkgugqhelhjkeu.supabase.co
+Tag:         v6.0.0

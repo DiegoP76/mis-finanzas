@@ -1,3 +1,7 @@
+const SUPABASE_URL = 'https://iulwhewkgugqhelhjkeu.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml1bHdoZXdrZ3VncWhlbGhqa2V1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY3Nzg4NjIsImV4cCI6MjEwMjM1NDg2Mn0.ejQV-tdUNz0rKvrgV_L9uSioGs3dCGziDxbv4_78ecI';
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
 const DEFAULT_CATEGORIES = {
     expense: [
         { id: 'alimentacion', label: 'Alimentación', color: '#FF6B6B', icon: '🛒' },
@@ -92,17 +96,36 @@ function populateMonthSelector() {
     select.value = currentMonth;
 }
 
-// ─── API helper ─────────────────────────────────────────
-async function api(url, options = {}) {
-    const res = await fetch(url, {
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        ...options,
-        body: options.body ? JSON.stringify(options.body) : undefined,
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Error de conexión');
+// ─── Supabase helpers ─────────────────────────────────────
+async function supaQuery(table, options = {}) {
+    let query = db.from(table).select(options.select || '*');
+    if (options.filter) {
+        options.filter.forEach(f => { query = query.eq(f.col, f.val); });
+    }
+    if (options.order) query = query.order(options.order.col, { ascending: options.order.asc || false });
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
     return data;
+}
+
+async function supaInsert(table, rows) {
+    const { data, error } = await db.from(table).insert(rows).select();
+    if (error) throw new Error(error.message);
+    return data;
+}
+
+async function supaUpdate(table, updates, filters) {
+    let query = db.from(table).update(updates);
+    filters.forEach(f => { query = query.eq(f.col, f.val); });
+    const { error } = await query;
+    if (error) throw new Error(error.message);
+}
+
+async function supaDelete(table, filters) {
+    let query = db.from(table).delete();
+    filters.forEach(f => { query = query.eq(f.col, f.val); });
+    const { error } = await query;
+    if (error) throw new Error(error.message);
 }
 
 // ─── PIN ────────────────────────────────────────────────
@@ -188,7 +211,7 @@ function skipPin() {
 }
 
 async function setUserPin(pin) {
-    try { await api('/api/pin', { method: 'POST', body: { pin } }); } catch {}
+    try { await supaUpdate('users', { pin }, [{ col: 'username', val: currentUser }]); } catch {}
     userPin = pin;
     if (currentUser) {
         localStorage.setItem('finanzas_last_user', currentUser);
@@ -197,7 +220,7 @@ async function setUserPin(pin) {
 }
 
 async function removeUserPin() {
-    try { await api('/api/pin', { method: 'DELETE' }); } catch {}
+    try { await supaUpdate('users', { pin: '' }, [{ col: 'username', val: currentUser }]); } catch {}
     userPin = '';
     if (currentUser) {
         localStorage.removeItem('finanzas_last_user');
@@ -224,49 +247,50 @@ function togglePin() {
 async function checkSession() {
     const lastUser = localStorage.getItem('finanzas_last_user');
     const lastPin = localStorage.getItem('finanzas_last_pin');
-    try {
-        const data = await api('/api/me');
-        if (data.user) {
-            currentUser = data.user;
-            await loadAllData();
-            if (userPin) showPin(); else initApp();
-        } else if (lastUser && lastPin) {
-            try {
-                const loginData = await api('/api/pin/login', { method: 'POST', body: { username: lastUser, pin: lastPin } });
-                currentUser = loginData.username;
+    if (lastUser && lastPin) {
+        try {
+            const rows = await supaQuery('users', { filter: [{ col: 'username', val: lastUser }], select: 'username,pin' });
+            if (rows.length > 0 && rows[0].pin === lastPin) {
+                currentUser = lastUser;
+                userPin = lastPin;
                 await loadAllData();
                 showPin();
-            } catch {
-                currentUser = lastUser; userPin = lastPin;
-                showPin();
+                return;
             }
-        } else { showAuth(); }
-    } catch {
-        if (lastUser && lastPin) {
-            try {
-                const loginData = await api('/api/pin/login', { method: 'POST', body: { username: lastUser, pin: lastPin } });
-                currentUser = loginData.username;
-                await loadAllData();
-                showPin();
-            } catch {
-                currentUser = lastUser; userPin = lastPin;
-                showPin();
-            }
-        } else { showAuth(); }
+        } catch {}
     }
+    if (lastUser) {
+        try {
+            const rows = await supaQuery('users', { filter: [{ col: 'username', val: lastUser }], select: 'username,pin' });
+            if (rows.length > 0) {
+                currentUser = lastUser;
+                userPin = rows[0].pin || '';
+                await loadAllData();
+                showPin();
+                return;
+            }
+        } catch {}
+    }
+    showAuth();
 }
 
 async function login(username, password) {
-    const data = await api('/api/login', { method: 'POST', body: { username, password } });
-    currentUser = data.username;
+    const rows = await supaQuery('users', { filter: [{ col: 'username', val: username }], select: 'username,password,pin' });
+    if (rows.length === 0) throw new Error('Usuario no encontrado');
+    if (!bcrypt.compareSync(password, rows[0].password)) throw new Error('Usuario o contraseña incorrectos');
+    currentUser = rows[0].username;
+    userPin = rows[0].pin || '';
     await loadAllData();
     hideAuth();
     if (userPin) showPin(); else maybeSetPin();
 }
 
 async function register(username, password) {
-    const data = await api('/api/register', { method: 'POST', body: { username, password } });
-    currentUser = data.username;
+    const existing = await supaQuery('users', { filter: [{ col: 'username', val: username }], select: 'username' });
+    if (existing.length > 0) throw new Error('El usuario ya existe');
+    const hash = bcrypt.hashSync(password, 10);
+    await supaInsert('users', [{ username, password: hash, pin: '' }]);
+    currentUser = username;
     await loadAllData();
     hideAuth();
     maybeSetPin();
@@ -285,7 +309,6 @@ function maybeSetPin() {
 }
 
 async function logout() {
-    await api('/api/logout', { method: 'POST' });
     localStorage.removeItem('finanzas_last_user');
     localStorage.removeItem('finanzas_last_pin');
     currentUser = null; transactions = [];
@@ -350,14 +373,18 @@ async function handleAuth(e) {
 // ─── Data loading ───────────────────────────────────────
 async function loadAllData() {
     try {
-        const [txs, cats, pinData] = await Promise.all([
-            api('/api/transactions'),
-            api('/api/categories'),
-            api('/api/pin')
+        const [txs, cats, pinRows] = await Promise.all([
+            supaQuery('transactions', { filter: [{ col: 'username', val: currentUser }], order: { col: 'created_at', asc: false } }),
+            supaQuery('categories', { filter: [{ col: 'username', val: currentUser }], order: { col: 'label', asc: true } }),
+            supaQuery('users', { filter: [{ col: 'username', val: currentUser }], select: 'pin' })
         ]);
-        transactions = txs;
-        customUserCategories = cats;
-        userPin = pinData.pin || '';
+        transactions = txs.map(t => ({ id: parseInt(t.id), type: t.type, amount: parseFloat(t.amount), category: t.category, description: t.description, date: t.date }));
+        const grouped = { expense: [], income: [] };
+        cats.forEach(c => {
+            if (grouped[c.type]) grouped[c.type].push({ id: c.id, label: c.label, icon: c.icon, color: c.color });
+        });
+        customUserCategories = grouped;
+        userPin = pinRows.length > 0 ? (pinRows[0].pin || '') : '';
         if (currentUser) {
             localStorage.setItem('finanzas_last_user', currentUser);
             if (userPin) {
@@ -374,30 +401,32 @@ async function loadAllData() {
 }
 
 async function addTransactionAPI(tx) {
-    const saved = await api('/api/transactions', { method: 'POST', body: tx });
-    transactions.push(saved);
+    const id = Date.now();
+    await supaInsert('transactions', [{ id, username: currentUser, type: tx.type, amount: tx.amount, category: tx.category, description: tx.description || '', date: tx.date || '' }]);
+    transactions.push({ id, type: tx.type, amount: tx.amount, category: tx.category, description: tx.description || '', date: tx.date || '' });
 }
 
 async function deleteTransactionAPI(id) {
-    await api(`/api/transactions/${id}`, { method: 'DELETE' });
+    await supaDelete('transactions', [{ col: 'id', val: id }]);
     transactions = transactions.filter(tx => tx.id !== id);
 }
 
 async function editTransactionAPI(id, data) {
-    await api(`/api/transactions/${id}`, { method: 'PUT', body: data });
+    await supaUpdate('transactions', { type: data.type, amount: data.amount, category: data.category, description: data.description || '', date: data.date || '' }, [{ col: 'id', val: id }]);
     const tx = transactions.find(t => t.id === id);
     if (tx) { tx.type = data.type; tx.amount = data.amount; tx.category = data.category; tx.description = data.description; tx.date = data.date; }
 }
 
 async function addCategoryAPI(type, label, icon) {
-    const data = await api('/api/categories', { method: 'POST', body: { type, label, icon: icon || '📌' } });
+    const id = 'custom_' + Date.now();
     const colors = { expense: '#A0A4B8', income: '#00B894' };
-    customUserCategories[type].push({ id: data.id, label, icon: icon || '📌', color: colors[type] });
+    await supaInsert('categories', [{ id, username: currentUser, type, label, icon: icon || '📌', color: colors[type] }]);
+    customUserCategories[type].push({ id, label, icon: icon || '📌', color: colors[type] });
     rebuildCategoryMap();
 }
 
 async function removeCategoryAPI(type, id) {
-    await api(`/api/categories/${type}/${id}`, { method: 'DELETE' });
+    await supaDelete('categories', [{ col: 'id', val: id }]);
     customUserCategories[type] = customUserCategories[type].filter(c => c.id !== id);
     rebuildCategoryMap();
 }
