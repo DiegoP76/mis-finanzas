@@ -1,4 +1,4 @@
-Mis Finanzas v6.1.0 ✅ ESTABLE
+Mis Finanzas v6.2.1 ✅ ESTABLE
 =================================
 Fecha: 15 Agosto 2026
 Estado: Funcional — migrado a Supabase Auth + Vercel
@@ -15,6 +15,8 @@ v5.0.0 - Edición de transacciones, Consejos IA
 v5.1.0 - Selector de mes global
 v6.0.0 - Migración a Supabase + Vercel (sin servidor Express)
 v6.1.0 - Supabase Auth + RLS + XSS fix + PWA + PIN encrypt
+v6.2.0 - Always require login + version badge + auto-update detection
+v6.2.1 - Fix duplicate event listeners, remove dead code
 
 ─── Funcionalidades v6.1.0 ─────────────────────────────
 ✅ Auth con Supabase Auth (email/password, JWT, RLS)

@@ -347,24 +347,6 @@ async function register(username, password) {
     maybeSetPin();
 }
 
-async function linkExistingData(username, authUserId) {
-    try {
-        const users = await supaQuery('users', { filter: [{ col: 'username', val: username }], select: 'user_id,pin' });
-        if (users.length > 0) {
-            if (!users[0].user_id) await supaUpdate('users', { user_id: authUserId }, [{ col: 'username', val: username }]);
-            if (users[0].pin) userPin = users[0].pin;
-        }
-        const txs = await supaQuery('transactions', { filter: [{ col: 'username', val: username }], select: 'id' });
-        for (const tx of txs) {
-            await supaUpdate('transactions', { user_id: authUserId }, [{ col: 'id', val: tx.id }]);
-        }
-        const cats = await supaQuery('categories', { filter: [{ col: 'username', val: username }], select: 'id' });
-        for (const cat of cats) {
-            await supaUpdate('categories', { user_id: authUserId }, [{ col: 'id', val: cat.id }]);
-        }
-    } catch (e) { console.error('Migration error:', e); }
-}
-
 function maybeSetPin() {
     localStorage.setItem('finanzas_last_user', currentUsername);
     pinMode = 'create';
@@ -527,6 +509,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('cat-manager-input').addEventListener('keydown', e => {
         if (e.key === 'Enter') addCategoryFromManager();
     });
+    setupForm();
+    setupTypeToggle();
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.addEventListener('controllerchange', () => {
             showToast('Versión actualizada. Recargá para ver los cambios.');
@@ -540,8 +524,6 @@ function initApp() {
     document.getElementById('app-version').textContent = 'v' + APP_VERSION;
     populateCategories();
     setDefaultDate();
-    setupForm();
-    setupTypeToggle();
     updateDate();
     updateMonthLabel();
     updateAll();
