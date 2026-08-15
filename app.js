@@ -286,23 +286,35 @@ function togglePin() {
 
 // ─── Auth ───────────────────────────────────────────────
 async function checkSession() {
-    try {
-        await db.auth.signOut();
-    } catch (e) {}
+    const lastUser = localStorage.getItem('finanzas_last_user');
+    if (lastUser) {
+        try {
+            const rows = await supaQuery('users', { filter: [{ col: 'username', val: lastUser }], select: 'user_id,pin' });
+            if (rows.length > 0 && rows[0].pin) {
+                currentUser = rows[0].user_id;
+                currentUsername = lastUser;
+                userPin = rows[0].pin;
+                await loadAllData();
+                showPin();
+                return;
+            }
+        } catch (e) {}
+    }
     showAuth();
 }
 
 async function login(username, password) {
     const email = username + '@misfinanzas.app';
-    let { data, error } = await db.auth.signInWithPassword({ email, password });
+    const { data, error } = await db.auth.signInWithPassword({ email, password });
     if (error) {
-        const regResult = await db.auth.signUp({ email, password });
-        if (regResult.error) {
-            if (regResult.error.message.includes('already')) throw new Error('Contraseña incorrecta');
-            throw new Error('Error al crear cuenta');
+        const msg = (error.message || '').toLowerCase();
+        if (msg.includes('invalid login') || msg.includes('credentials') || msg.includes('not found')) {
+            throw new Error('Usuario o contraseña incorrectos');
         }
-        data = regResult.data;
-        await linkExistingData(username, data.user.id);
+        if (msg.includes('already') || msg.includes('registered')) {
+            throw new Error('Usuario o contraseña incorrectos');
+        }
+        throw new Error(error.message);
     }
     currentUser = data.user.id;
     currentUsername = username;
@@ -314,6 +326,7 @@ async function login(username, password) {
         userPin = profiles[0].pin || '';
     }
     cachePin(userPin);
+    localStorage.setItem('finanzas_last_user', currentUsername);
     await loadAllData();
     hideAuth();
     if (userPin) showPin(); else maybeSetPin();
