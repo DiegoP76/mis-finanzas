@@ -446,7 +446,7 @@ async function loadAllData() {
             supaQuery('categories', { filter: [{ col: 'user_id', val: currentUser }], order: { col: 'label', asc: true } }),
             supaQuery('users', { filter: [{ col: 'user_id', val: currentUser }], select: 'pin' })
         ]);
-        transactions = txs.map(t => ({ id: t.id, type: t.type, amount: parseFloat(t.amount), category: t.category, description: t.description, date: t.date }));
+        transactions = txs.map(t => ({ id: Number(t.id), type: t.type, amount: parseFloat(t.amount), category: t.category, description: t.description, date: t.date }));
         const grouped = { expense: [], income: [] };
         cats.forEach(c => {
             if (grouped[c.type]) grouped[c.type].push({ id: c.id, label: c.label, icon: c.icon, color: c.color });
@@ -463,14 +463,14 @@ async function loadAllData() {
 }
 
 async function addTransactionAPI(tx) {
-    const id = Date.now() + '' + Math.floor(Math.random() * 1000);
+    const id = Date.now() * 1000 + Math.floor(Math.random() * 1000);
     await supaInsert('transactions', [{ id, username: currentUsername, user_id: currentUser, type: tx.type, amount: tx.amount, category: tx.category, description: tx.description || '', date: tx.date || '' }]);
     transactions.push({ id, type: tx.type, amount: tx.amount, category: tx.category, description: tx.description || '', date: tx.date || '' });
 }
 
 async function deleteTransactionAPI(id) {
     await supaDelete('transactions', [{ col: 'id', val: id }]);
-    transactions = transactions.filter(tx => tx.id !== id);
+    transactions = transactions.filter(tx => tx.id !== Number(id));
 }
 
 async function editTransactionAPI(id, data) {
@@ -707,6 +707,7 @@ function renderTransactionHTML(tx) {
 }
 
 async function deleteTransaction(id) {
+    id = Number(id);
     if (!confirm('¿Eliminar este movimiento?')) return;
     try { await deleteTransactionAPI(id); } catch (err) { showToast('Error al eliminar: ' + err.message); return; }
     updateAll(); showToast('Movimiento eliminado');
@@ -715,6 +716,7 @@ async function deleteTransaction(id) {
 let editTxType = 'expense';
 
 function openEditTx(id) {
+    id = Number(id);
     const tx = transactions.find(t => t.id === id);
     if (!tx) return;
     editTxType = tx.type;
@@ -743,7 +745,7 @@ function setEditType(type) {
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('edit-tx-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const id = document.getElementById('edit-tx-modal').dataset.editId;
+        const id = Number(document.getElementById('edit-tx-modal').dataset.editId);
         const data = {
             type: editTxType,
             amount: parseFloat(document.getElementById('edit-tx-amount').value),
