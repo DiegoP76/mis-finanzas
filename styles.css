@@ -72,6 +72,19 @@ html, body {
     font-size: 18px;
     font-weight: 700;
     color: var(--primary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.version-badge {
+    font-size: 9px;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: var(--bg);
+    padding: 1px 5px;
+    border-radius: 4px;
+    letter-spacing: 0.3px;
 }
 
 .header-right {

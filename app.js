@@ -1,3 +1,5 @@
+const APP_VERSION = '6.2.0';
+
 const SUPABASE_URL = 'https://iulwhewkgugqhelhjkeu.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml1bHdoZXdrZ3VncWhlbGhqa2V1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY3Nzg4NjIsImV4cCI6MjEwMjM1NDg2Mn0.ejQV-tdUNz0rKvrgV_L9uSioGs3dCGziDxbv4_78ecI';
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -285,19 +287,7 @@ function togglePin() {
 // ─── Auth ───────────────────────────────────────────────
 async function checkSession() {
     try {
-        const { data: { session } } = await db.auth.getSession();
-        if (session && session.user) {
-            currentUser = session.user.id;
-            currentUsername = session.user.email.split('@')[0];
-            await loadAllData();
-            if (userPin) {
-                showPin();
-            } else {
-                hideAuth();
-                initApp();
-            }
-            return;
-        }
+        await db.auth.signOut();
     } catch (e) {}
     showAuth();
 }
@@ -524,11 +514,17 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('cat-manager-input').addEventListener('keydown', e => {
         if (e.key === 'Enter') addCategoryFromManager();
     });
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+            showToast('Versión actualizada. Recargá para ver los cambios.');
+        });
+    }
     checkSession();
 });
 
 function initApp() {
     hideAuth();
+    document.getElementById('app-version').textContent = 'v' + APP_VERSION;
     populateCategories();
     setDefaultDate();
     setupForm();

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'finanzas-v6';
+const CACHE_NAME = 'finanzas-v6.2';
 const STATIC_ASSETS = [
     '/',
     '/index.html',
@@ -42,6 +42,15 @@ self.addEventListener('fetch', event => {
         return;
     }
     event.respondWith(
-        caches.match(event.request).then(cached => cached || fetch(event.request))
+        caches.match(event.request).then(cached => {
+            const fetched = fetch(event.request).then(response => {
+                if (response.ok && event.request.method === 'GET') {
+                    const clone = response.clone();
+                    caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+                }
+                return response;
+            }).catch(() => cached);
+            return cached || fetched;
+        })
     );
 });
