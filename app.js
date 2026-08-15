@@ -28,6 +28,7 @@ let CATEGORY_MAP = {};
 let transactions = [];
 let customUserCategories = { expense: [], income: [] };
 let currentUser = null;
+let currentUsername = '';
 let userPin = '';
 let expenseChart = null;
 let monthlyChart = null;
@@ -79,9 +80,11 @@ function updateMonthLabel() {
 function populateMonthSelector() {
     const select = document.getElementById('month-select');
     const available = getAvailableMonths();
-    const now = new Date();
-    const current = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
     select.innerHTML = '';
+    const allOpt = document.createElement('option');
+    allOpt.value = 'all';
+    allOpt.textContent = 'Todos los meses';
+    select.appendChild(allOpt);
     available.forEach(m => {
         const [y, mo] = m.split('-').map(Number);
         const opt = document.createElement('option');
@@ -89,10 +92,6 @@ function populateMonthSelector() {
         opt.textContent = MONTH_SHORT[mo - 1] + ' ' + y;
         select.appendChild(opt);
     });
-    const allOpt = document.createElement('option');
-    allOpt.value = 'all';
-    allOpt.textContent = 'Todos los meses';
-    select.appendChild(allOpt);
     select.value = currentMonth;
 }
 
@@ -126,6 +125,51 @@ async function supaDelete(table, filters) {
     filters.forEach(f => { query = query.eq(f.col, f.val); });
     const { error } = await query;
     if (error) throw new Error(error.message);
+}
+
+// ─── Secure PIN storage ──────────────────────────────────
+function getPinKey() {
+    let key = sessionStorage.getItem('finanzas_pin_key');
+    if (!key) {
+        key = Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2, '0')).join('');
+        sessionStorage.setItem('finanzas_pin_key', key);
+    }
+    return key;
+}
+
+function encryptPin(pin) {
+    const key = getPinKey();
+    let result = '';
+    for (let i = 0; i < pin.length; i++) {
+        result += String.fromCharCode(pin.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+    }
+    return btoa(result);
+}
+
+function decryptPin(enc) {
+    try {
+        const key = getPinKey();
+        const decoded = atob(enc);
+        let result = '';
+        for (let i = 0; i < decoded.length; i++) {
+            result += String.fromCharCode(decoded.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+        }
+        return result;
+    } catch { return ''; }
+}
+
+function cachePin(pin) {
+    if (pin) localStorage.setItem('finanzas_pin', encryptPin(pin));
+    else localStorage.removeItem('finanzas_pin');
+}
+
+function getCachedPin() {
+    const enc = localStorage.getItem('finanzas_pin');
+    return enc ? decryptPin(enc) : '';
+}
+
+function clearPinCache() {
+    localStorage.removeItem('finanzas_pin');
 }
 
 // ─── PIN ────────────────────────────────────────────────
@@ -164,8 +208,8 @@ function checkPin() {
         if (pinAttempts >= 3) {
             document.getElementById('pin-error').textContent = 'Demasiados intentos';
             setTimeout(() => {
+                clearPinCache();
                 localStorage.removeItem('finanzas_last_user');
-                localStorage.removeItem('finanzas_last_pin');
                 hidePin(); showAuth();
             }, 1000);
         } else {
@@ -183,7 +227,7 @@ function showPin() {
     if (userPin) {
         pinMode = 'unlock'; pinAttempts = 0;
         document.getElementById('pin-title').textContent = 'Ingresá tu PIN';
-        document.getElementById('pin-subtitle').textContent = currentUser || '';
+        document.getElementById('pin-subtitle').textContent = currentUsername || '';
         document.getElementById('pin-switch-user').style.display = '';
         document.getElementById('pin-setup-container').style.display = 'none';
     } else {
@@ -201,8 +245,8 @@ function hidePin() {
 }
 
 function switchPinUser() {
+    clearPinCache();
     localStorage.removeItem('finanzas_last_user');
-    localStorage.removeItem('finanzas_last_pin');
     hidePin(); showAuth();
 }
 
@@ -211,21 +255,16 @@ function skipPin() {
 }
 
 async function setUserPin(pin) {
-    try { await supaUpdate('users', { pin }, [{ col: 'username', val: currentUser }]); } catch {}
+    try { await supaUpdate('users', { pin }, [{ col: 'user_id', val: currentUser }]); } catch {}
     userPin = pin;
-    if (currentUser) {
-        localStorage.setItem('finanzas_last_user', currentUser);
-        localStorage.setItem('finanzas_last_pin', pin);
-    }
+    cachePin(pin);
+    if (currentUser) localStorage.setItem('finanzas_last_user', currentUsername);
 }
 
 async function removeUserPin() {
-    try { await supaUpdate('users', { pin: '' }, [{ col: 'username', val: currentUser }]); } catch {}
+    try { await supaUpdate('users', { pin: '' }, [{ col: 'user_id', val: currentUser }]); } catch {}
     userPin = '';
-    if (currentUser) {
-        localStorage.removeItem('finanzas_last_user');
-        localStorage.removeItem('finanzas_last_pin');
-    }
+    clearPinCache();
 }
 
 function togglePin() {
@@ -245,59 +284,86 @@ function togglePin() {
 
 // ─── Auth ───────────────────────────────────────────────
 async function checkSession() {
-    const lastUser = localStorage.getItem('finanzas_last_user');
-    const lastPin = localStorage.getItem('finanzas_last_pin');
-    if (lastUser && lastPin) {
-        try {
-            const rows = await supaQuery('users', { filter: [{ col: 'username', val: lastUser }], select: 'username,pin' });
-            if (rows.length > 0 && rows[0].pin === lastPin) {
-                currentUser = lastUser;
-                userPin = lastPin;
-                await loadAllData();
+    try {
+        const { data: { session } } = await db.auth.getSession();
+        if (session && session.user) {
+            currentUser = session.user.id;
+            currentUsername = session.user.email.split('@')[0];
+            await loadAllData();
+            if (userPin) {
                 showPin();
-                return;
+            } else {
+                hideAuth();
+                initApp();
             }
-        } catch {}
-    }
-    if (lastUser) {
-        try {
-            const rows = await supaQuery('users', { filter: [{ col: 'username', val: lastUser }], select: 'username,pin' });
-            if (rows.length > 0) {
-                currentUser = lastUser;
-                userPin = rows[0].pin || '';
-                await loadAllData();
-                showPin();
-                return;
-            }
-        } catch {}
-    }
+            return;
+        }
+    } catch (e) {}
     showAuth();
 }
 
 async function login(username, password) {
-    const rows = await supaQuery('users', { filter: [{ col: 'username', val: username }], select: 'username,password,pin' });
-    if (rows.length === 0) throw new Error('Usuario no encontrado');
-    if (!bcrypt.compareSync(password, rows[0].password)) throw new Error('Usuario o contraseña incorrectos');
-    currentUser = rows[0].username;
-    userPin = rows[0].pin || '';
+    const email = username + '@misfinanzas.app';
+    let { data, error } = await db.auth.signInWithPassword({ email, password });
+    if (error) {
+        const regResult = await db.auth.signUp({ email, password });
+        if (regResult.error) {
+            if (regResult.error.message.includes('already')) throw new Error('Contraseña incorrecta');
+            throw new Error('Error al crear cuenta');
+        }
+        data = regResult.data;
+        await linkExistingData(username, data.user.id);
+    }
+    currentUser = data.user.id;
+    currentUsername = username;
+    const profiles = await supaQuery('users', { filter: [{ col: 'user_id', val: currentUser }], select: 'pin' });
+    if (profiles.length === 0) {
+        await supaInsert('users', [{ username, user_id: currentUser, pin: '' }]);
+        userPin = '';
+    } else {
+        userPin = profiles[0].pin || '';
+    }
+    cachePin(userPin);
     await loadAllData();
     hideAuth();
     if (userPin) showPin(); else maybeSetPin();
 }
 
 async function register(username, password) {
-    const existing = await supaQuery('users', { filter: [{ col: 'username', val: username }], select: 'username' });
-    if (existing.length > 0) throw new Error('El usuario ya existe');
-    const hash = bcrypt.hashSync(password, 10);
-    await supaInsert('users', [{ username, password: hash, pin: '' }]);
-    currentUser = username;
+    const email = username + '@misfinanzas.app';
+    const { data, error } = await db.auth.signUp({ email, password });
+    if (error) {
+        if (error.message.includes('already')) throw new Error('El usuario ya existe');
+        throw new Error(error.message);
+    }
+    currentUser = data.user.id;
+    currentUsername = username;
+    await supaInsert('users', [{ username, user_id: currentUser, pin: '' }]);
     await loadAllData();
     hideAuth();
     maybeSetPin();
 }
 
+async function linkExistingData(username, authUserId) {
+    try {
+        const users = await supaQuery('users', { filter: [{ col: 'username', val: username }], select: 'user_id,pin' });
+        if (users.length > 0) {
+            if (!users[0].user_id) await supaUpdate('users', { user_id: authUserId }, [{ col: 'username', val: username }]);
+            if (users[0].pin) userPin = users[0].pin;
+        }
+        const txs = await supaQuery('transactions', { filter: [{ col: 'username', val: username }], select: 'id' });
+        for (const tx of txs) {
+            await supaUpdate('transactions', { user_id: authUserId }, [{ col: 'id', val: tx.id }]);
+        }
+        const cats = await supaQuery('categories', { filter: [{ col: 'username', val: username }], select: 'id' });
+        for (const cat of cats) {
+            await supaUpdate('categories', { user_id: authUserId }, [{ col: 'id', val: cat.id }]);
+        }
+    } catch (e) { console.error('Migration error:', e); }
+}
+
 function maybeSetPin() {
-    localStorage.setItem('finanzas_last_user', currentUser);
+    localStorage.setItem('finanzas_last_user', currentUsername);
     pinMode = 'create';
     document.getElementById('pin-title').textContent = 'Creá tu PIN de 3 dígitos';
     document.getElementById('pin-subtitle').textContent = '';
@@ -309,9 +375,10 @@ function maybeSetPin() {
 }
 
 async function logout() {
+    try { await db.auth.signOut(); } catch {}
+    clearPinCache();
     localStorage.removeItem('finanzas_last_user');
-    localStorage.removeItem('finanzas_last_pin');
-    currentUser = null; transactions = [];
+    currentUser = null; currentUsername = ''; transactions = [];
     customUserCategories = { expense: [], income: [] };
     userPin = ''; CATEGORY_MAP = {};
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -358,6 +425,7 @@ async function handleAuth(e) {
     e.preventDefault();
     const username = document.getElementById('auth-username').value.trim();
     const password = document.getElementById('auth-password').value;
+    if (!username || !password) { document.getElementById('auth-error').textContent = 'Completá todos los campos'; return; }
     const errorEl = document.getElementById('auth-error');
     const btn = document.getElementById('auth-submit-btn');
     btn.disabled = true; btn.textContent = '...';
@@ -374,35 +442,29 @@ async function handleAuth(e) {
 async function loadAllData() {
     try {
         const [txs, cats, pinRows] = await Promise.all([
-            supaQuery('transactions', { filter: [{ col: 'username', val: currentUser }], order: { col: 'created_at', asc: false } }),
-            supaQuery('categories', { filter: [{ col: 'username', val: currentUser }], order: { col: 'label', asc: true } }),
-            supaQuery('users', { filter: [{ col: 'username', val: currentUser }], select: 'pin' })
+            supaQuery('transactions', { filter: [{ col: 'user_id', val: currentUser }], order: { col: 'created_at', asc: false } }),
+            supaQuery('categories', { filter: [{ col: 'user_id', val: currentUser }], order: { col: 'label', asc: true } }),
+            supaQuery('users', { filter: [{ col: 'user_id', val: currentUser }], select: 'pin' })
         ]);
-        transactions = txs.map(t => ({ id: parseInt(t.id), type: t.type, amount: parseFloat(t.amount), category: t.category, description: t.description, date: t.date }));
+        transactions = txs.map(t => ({ id: t.id, type: t.type, amount: parseFloat(t.amount), category: t.category, description: t.description, date: t.date }));
         const grouped = { expense: [], income: [] };
         cats.forEach(c => {
             if (grouped[c.type]) grouped[c.type].push({ id: c.id, label: c.label, icon: c.icon, color: c.color });
         });
         customUserCategories = grouped;
         userPin = pinRows.length > 0 ? (pinRows[0].pin || '') : '';
-        if (currentUser) {
-            localStorage.setItem('finanzas_last_user', currentUser);
-            if (userPin) {
-                localStorage.setItem('finanzas_last_pin', userPin);
-            } else {
-                localStorage.removeItem('finanzas_last_pin');
-            }
-        }
-    } catch {
-        const lastPin = localStorage.getItem('finanzas_last_pin');
-        if (lastPin) userPin = lastPin;
+        cachePin(userPin);
+    } catch (e) {
+        console.error('loadAllData error:', e);
+        const cached = getCachedPin();
+        if (cached) userPin = cached;
     }
     rebuildCategoryMap();
 }
 
 async function addTransactionAPI(tx) {
-    const id = Date.now();
-    await supaInsert('transactions', [{ id, username: currentUser, type: tx.type, amount: tx.amount, category: tx.category, description: tx.description || '', date: tx.date || '' }]);
+    const id = Date.now() + '' + Math.floor(Math.random() * 1000);
+    await supaInsert('transactions', [{ id, username: currentUsername, user_id: currentUser, type: tx.type, amount: tx.amount, category: tx.category, description: tx.description || '', date: tx.date || '' }]);
     transactions.push({ id, type: tx.type, amount: tx.amount, category: tx.category, description: tx.description || '', date: tx.date || '' });
 }
 
@@ -418,9 +480,9 @@ async function editTransactionAPI(id, data) {
 }
 
 async function addCategoryAPI(type, label, icon) {
-    const id = 'custom_' + Date.now();
+    const id = 'custom_' + Date.now() + Math.floor(Math.random() * 100);
     const colors = { expense: '#A0A4B8', income: '#00B894' };
-    await supaInsert('categories', [{ id, username: currentUser, type, label, icon: icon || '📌', color: colors[type] }]);
+    await supaInsert('categories', [{ id, username: currentUsername, user_id: currentUser, type, label, icon: icon || '📌', color: colors[type] }]);
     customUserCategories[type].push({ id, label, icon: icon || '📌', color: colors[type] });
     rebuildCategoryMap();
 }
@@ -482,7 +544,7 @@ function updateDate() {
     const now = new Date();
     document.getElementById('current-date').textContent = now.getDate() + ' ' + MONTHS[now.getMonth()] + ' ' + now.getFullYear();
     const userEl = document.getElementById('current-user');
-    if (userEl && currentUser) userEl.textContent = currentUser;
+    if (userEl && currentUsername) userEl.textContent = currentUsername;
     updateMonthLabel();
     populateMonthSelector();
 }
@@ -577,7 +639,7 @@ function updateDashboard() {
     document.getElementById('quick-expense').textContent = formatCurrency(totalExpense);
     document.getElementById('quick-count').textContent = filtered.length;
     updateExpenseChart(filtered);
-    updateMonthlyChart();
+    updateMonthlyChart(filtered);
     renderRecentTransactions();
 }
 
@@ -598,20 +660,16 @@ function updateExpenseChart(monthTxs) {
     expenseChart = new Chart(ctx, { type: 'doughnut', data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 3, borderColor: '#fff' }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '68%', plugins: { legend: { position: 'bottom', labels: { padding: 12, usePointStyle: true, pointStyle: 'circle', font: { size: 11 }, color: '#636e72' } } } } });
 }
 
-function updateMonthlyChart() {
+function updateMonthlyChart(filteredMonth) {
     if (typeof Chart === 'undefined') return;
     const canvas = document.getElementById('monthlyChart'); const ctx = canvas.getContext('2d');
     const emptyMsg = document.getElementById('monthly-chart-empty');
     if (monthlyChart) { monthlyChart.destroy(); monthlyChart = null; }
-    const now = new Date();
-    const months = [];
-    for (let i = 5; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); months.push({ year: d.getFullYear(), month: d.getMonth(), label: MONTHS[d.getMonth()].slice(0, 3) }); }
-    const incomes = months.map(m => transactions.filter(tx => { const d = parseDate(tx.date); return tx.type === 'income' && d.getMonth() === m.month && d.getFullYear() === m.year; }).reduce((s, t) => s + t.amount, 0));
-    const expenses = months.map(m => transactions.filter(tx => { const d = parseDate(tx.date); return tx.type === 'expense' && d.getMonth() === m.month && d.getFullYear() === m.year; }).reduce((s, t) => s + t.amount, 0));
-    const hasData = incomes.some(v => v > 0) || expenses.some(v => v > 0);
-    if (!hasData) { canvas.style.display = 'none'; emptyMsg.style.display = 'block'; return; }
+    if (!filteredMonth || filteredMonth.length === 0) { canvas.style.display = 'none'; emptyMsg.style.display = 'block'; return; }
+    const totalIncome = filteredMonth.filter(tx => tx.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const totalExpense = filteredMonth.filter(tx => tx.type === 'expense').reduce((s, t) => s + t.amount, 0);
     canvas.style.display = 'block'; emptyMsg.style.display = 'none';
-    monthlyChart = new Chart(ctx, { type: 'bar', data: { labels: months.map(m => m.label), datasets: [{ label: 'Ingresos', data: incomes, backgroundColor: 'rgba(0,185,148,0.85)', borderRadius: 4, barPercentage: 0.35 }, { label: 'Gastos', data: expenses, backgroundColor: 'rgba(255,107,107,0.85)', borderRadius: 4, barPercentage: 0.35 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { font: { size: 11 }, color: '#b2bec3' } }, y: { grid: { color: '#eef0f5' }, ticks: { font: { size: 10 }, color: '#b2bec3', callback: v => '$' + (v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v) } } } } });
+    monthlyChart = new Chart(ctx, { type: 'bar', data: { labels: ['Ingresos', 'Gastos'], datasets: [{ data: [totalIncome, totalExpense], backgroundColor: ['rgba(0,185,148,0.85)', 'rgba(255,107,107,0.85)'], borderRadius: 6, barPercentage: 0.5 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { font: { size: 12, weight: '600' }, color: '#636e72' } }, y: { grid: { color: '#eef0f5' }, ticks: { font: { size: 10 }, color: '#b2bec3', callback: v => '$' + (v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v) } } } } });
 }
 
 function renderRecentTransactions() {
@@ -645,12 +703,12 @@ function renderTransactions() {
 function renderTransactionHTML(tx) {
     const cat = CATEGORY_MAP[tx.category] || { label: tx.category, icon: '📦' };
     const prefix = tx.type === 'expense' ? '-' : '+';
-    return '<div class="transaction-item" data-id="' + tx.id + '" onclick="openEditTx(' + tx.id + ')"><div class="transaction-cat-icon ' + tx.type + '"><span>' + cat.icon + '</span></div><div class="transaction-info"><div class="transaction-desc">' + escapeHTML(tx.description) + '</div><div class="transaction-meta">' + formatDate(tx.date) + ' <span class="transaction-category">' + cat.label + '</span></div></div><span class="transaction-amount ' + tx.type + '">' + prefix + formatCurrency(tx.amount) + '</span><button class="delete-btn" onclick="event.stopPropagation();deleteTransaction(' + tx.id + ')" title="Eliminar">&times;</button></div>';
+    return '<div class="transaction-item" data-id="' + tx.id + '" onclick="openEditTx(' + tx.id + ')"><div class="transaction-cat-icon ' + tx.type + '"><span>' + cat.icon + '</span></div><div class="transaction-info"><div class="transaction-desc">' + escapeHTML(tx.description) + '</div><div class="transaction-meta">' + formatDate(tx.date) + ' <span class="transaction-category">' + escapeHTML(cat.label) + '</span></div></div><span class="transaction-amount ' + tx.type + '">' + prefix + formatCurrency(tx.amount) + '</span><button class="delete-btn" onclick="event.stopPropagation();deleteTransaction(' + tx.id + ')" title="Eliminar">&times;</button></div>';
 }
 
 async function deleteTransaction(id) {
     if (!confirm('¿Eliminar este movimiento?')) return;
-    try { await deleteTransactionAPI(id); } catch (err) { showToast('Error: ' + err.message); return; }
+    try { await deleteTransactionAPI(id); } catch (err) { showToast('Error al eliminar: ' + err.message); return; }
     updateAll(); showToast('Movimiento eliminado');
 }
 
@@ -668,7 +726,7 @@ function openEditTx(id) {
     typeBtns.forEach(b => b.classList.toggle('active', b.dataset.type === tx.type));
     const sel = document.getElementById('edit-tx-category');
     const cats = getAllCategories(tx.type);
-    sel.innerHTML = cats.map(c => '<option value="' + c.id + '"' + (c.id === tx.category ? ' selected' : '') + '>' + c.icon + ' ' + c.label + '</option>').join('');
+    sel.innerHTML = cats.map(c => '<option value="' + c.id + '"' + (c.id === tx.category ? ' selected' : '') + '>' + c.icon + ' ' + escapeHTML(c.label) + '</option>').join('');
     document.getElementById('edit-tx-modal').classList.add('active');
 }
 
@@ -679,13 +737,13 @@ function setEditType(type) {
     document.querySelectorAll('#edit-tx-form .type-btn').forEach(b => b.classList.toggle('active', b.dataset.type === type));
     const sel = document.getElementById('edit-tx-category');
     const cats = getAllCategories(type);
-    sel.innerHTML = cats.map(c => '<option value="' + c.id + '">' + c.icon + ' ' + c.label + '</option>').join('');
+    sel.innerHTML = cats.map(c => '<option value="' + c.id + '">' + c.icon + ' ' + escapeHTML(c.label) + '</option>').join('');
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('edit-tx-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const id = parseInt(document.getElementById('edit-tx-modal').dataset.editId);
+        const id = document.getElementById('edit-tx-modal').dataset.editId;
         const data = {
             type: editTxType,
             amount: parseFloat(document.getElementById('edit-tx-amount').value),
@@ -693,7 +751,7 @@ document.addEventListener('DOMContentLoaded', () => {
             description: document.getElementById('edit-tx-description').value,
             date: document.getElementById('edit-tx-date').value
         };
-        try { await editTransactionAPI(id, data); } catch (err) { showToast('Error: ' + err.message); return; }
+        try { await editTransactionAPI(id, data); } catch (err) { showToast('Error al editar: ' + err.message); return; }
         closeEditTx(); updateAll(); showToast('Movimiento actualizado');
     });
 });
@@ -710,10 +768,10 @@ function renderCategories() {
     const sorted = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
     const maxAmount = sorted[0][1];
     container.innerHTML = sorted.map(([id, amount]) => {
-        const cat = CATEGORY_MAP[id] || { label: id, color: '#A0A4B8' };
+        const cat = CATEGORY_MAP[id] || { label: id, color: '#A0A4B8', icon: '📦' };
         const percent = ((amount / totalExpense) * 100).toFixed(1);
         const width = (amount / maxAmount) * 100;
-        return '<div class="category-item"><div class="category-header"><span class="category-name"><span class="category-dot" style="background:' + cat.color + '"></span> ' + cat.icon + ' ' + cat.label + '</span><span class="category-amount">' + formatCurrency(amount) + '</span></div><div class="category-bar"><div class="category-bar-fill" style="width:' + width + '%;background:' + cat.color + '"></div></div><span class="category-percent">' + percent + '% del total</span></div>';
+        return '<div class="category-item"><div class="category-header"><span class="category-name"><span class="category-dot" style="background:' + cat.color + '"></span> ' + cat.icon + ' ' + escapeHTML(cat.label) + '</span><span class="category-amount">' + formatCurrency(amount) + '</span></div><div class="category-bar"><div class="category-bar-fill" style="width:' + width + '%;background:' + cat.color + '"></div></div><span class="category-percent">' + percent + '% del total</span></div>';
     }).join('');
 }
 
@@ -830,7 +888,7 @@ function generateInsights(txs) {
 
     const hasIncome = txs.some(t => t.type === 'income');
     if (!hasIncome) {
-        insights.push({ icon: '💡', title: 'Registrá tus ingresos', desc: 'No tenés ingresos registrados. Agregalos para obtener análisis más precisos y mejores consejos.', type: 'tip' });
+        insights.push({ icon: '💡', title: 'Registá tus ingresos', desc: 'No tenés ingresos registrados. Agregalos para obtener análisis más precisos y mejores consejos.', type: 'tip' });
     }
 
     const dailyExpense = expense / (statsFrom && statsTo ? Math.max(1, Math.round((parseDate(statsTo) - parseDate(statsFrom)) / 86400000) + 1) : 30);
@@ -848,7 +906,7 @@ function renderInsights(txs) {
     if (!container) return;
     const insights = generateInsights(txs);
     if (!insights.length) { container.innerHTML = '<p class="ai-empty">Registá movimientos para ver consejos personalizados</p>'; return; }
-    container.innerHTML = insights.map(i => '<div class="ai-card ' + i.type + '"><div class="ai-card-header"><span class="ai-card-icon">' + i.icon + '</span><span class="ai-card-title">' + i.title + '</span></div><div class="ai-card-desc">' + i.desc + '</div>' + (i.value ? '<div class="ai-card-value">' + i.value + '</div>' : '') + '</div>').join('');
+    container.innerHTML = insights.map(i => '<div class="ai-card ' + i.type + '"><div class="ai-card-header"><span class="ai-card-icon">' + i.icon + '</span><span class="ai-card-title">' + escapeHTML(i.title) + '</span></div><div class="ai-card-desc">' + escapeHTML(i.desc) + '</div>' + (i.value ? '<div class="ai-card-value">' + escapeHTML(i.value) + '</div>' : '') + '</div>').join('');
 }
 
 function updateStatsSummary(txs) {
@@ -956,7 +1014,7 @@ function renderTopExpenses(txs) {
     if (!expenses.length) { container.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:16px 0;font-size:13px">Sin gastos en este período</p>'; return; }
     container.innerHTML = expenses.map(tx => {
         const cat = CATEGORY_MAP[tx.category] || { label: tx.category, icon: '📦' };
-        return '<div class="transaction-item"><div class="transaction-cat-icon expense"><span>' + cat.icon + '</span></div><div class="transaction-info"><div class="transaction-desc">' + escapeHTML(tx.description) + '</div><div class="transaction-meta">' + formatDate(tx.date) + ' &middot; ' + cat.label + '</div></div><span class="transaction-amount expense">-' + formatCurrency(tx.amount) + '</span></div>';
+        return '<div class="transaction-item"><div class="transaction-cat-icon expense"><span>' + cat.icon + '</span></div><div class="transaction-info"><div class="transaction-desc">' + escapeHTML(tx.description) + '</div><div class="transaction-meta">' + formatDate(tx.date) + ' &middot; ' + escapeHTML(cat.label) + '</div></div><span class="transaction-amount expense">-' + formatCurrency(tx.amount) + '</span></div>';
     }).join('');
 }
 
@@ -1002,7 +1060,7 @@ function renderCatManager() {
     container.innerHTML = cats.map(c => {
         const isDefault = defaults.includes(c.id);
         const inUse = transactions.filter(tx => tx.type === catManagerType && tx.category === c.id).length;
-        return '<div class="cat-manager-item"><span class="cat-info"><span class="cat-dot" style="background:' + c.color + '"></span> ' + c.icon + ' ' + c.label + (isDefault ? '<span style="font-size:10px;color:var(--text-muted);margin-left:4px">fija</span>' : '') + '</span>' + (isDefault ? '<button class="cat-remove" disabled title="No se puede eliminar"></button>' : '<button class="cat-remove" onclick="removeCat(\'' + catManagerType + '\',\'' + c.id + '\')" title="' + (inUse > 0 ? inUse + ' movimiento(s) asociado(s)' : 'Eliminar') + '">&times;</button>') + '</div>';
+        return '<div class="cat-manager-item"><span class="cat-info"><span class="cat-dot" style="background:' + c.color + '"></span> ' + c.icon + ' ' + escapeHTML(c.label) + (isDefault ? '<span style="font-size:10px;color:var(--text-muted);margin-left:4px">fija</span>' : '') + '</span>' + (isDefault ? '<button class="cat-remove" disabled title="No se puede eliminar"></button>' : '<button class="cat-remove" onclick="removeCat(\'' + catManagerType + '\',\'' + c.id + '\')" title="' + (inUse > 0 ? inUse + ' movimiento(s) asociado(s)' : 'Eliminar') + '">&times;</button>') + '</div>';
     }).join('');
 }
 

@@ -1,9 +1,9 @@
-Mis Finanzas v6.0.0 ✅ ESTABLE
+Mis Finanzas v6.1.0 ✅ ESTABLE
 =================================
 Fecha: 15 Agosto 2026
-Estado: Funcional — migrado a Supabase + Vercel
+Estado: Funcional — migrado a Supabase Auth + Vercel
 
-App web de finanzas personales multi-usuario. Frontend estático + Supabase (DB + Auth).
+App web de finanzas personales multi-usuario. Frontend estático + Supabase (Auth + DB).
 
 ─── Changelog ───────────────────────────────────────────
 v1.0.0 - Versión inicial con localStorage (single-user)
@@ -14,10 +14,11 @@ v4.1.0 - Quick access: PIN numérico 3 dígitos, auto-login por PIN
 v5.0.0 - Edición de transacciones, Consejos IA
 v5.1.0 - Selector de mes global
 v6.0.0 - Migración a Supabase + Vercel (sin servidor Express)
+v6.1.0 - Supabase Auth + RLS + XSS fix + PWA + PIN encrypt
 
-─── Funcionalidades v6.0.0 ─────────────────────────────
-✅ Registro y login con usuario/contraseña (bcrypt)
-✅ PIN numérico 3 dígitos (teclado en pantalla)
+─── Funcionalidades v6.1.0 ─────────────────────────────
+✅ Auth con Supabase Auth (email/password, JWT, RLS)
+✅ PIN numérico 3 dígitos (almacenamiento encriptado en localStorage)
 ✅ Auto-login por PIN (nunca más pedir usuario/contraseña)
 ✅ Transacciones CRUD (crear, leer, editar, eliminar)
 ✅ Edición de movimientos (monto, categoría, descripción, fecha)
@@ -26,16 +27,31 @@ v6.0.0 - Migración a Supabase + Vercel (sin servidor Express)
 ✅ Estadísticas completas (resumen, barra, tendencia, proyección)
 ✅ Consejos IA (análisis inteligente de finanzas personales)
 ✅ Selector de mes: filtrar por mes específico o ver todos
-✅ Multi-usuario con datos aislados
+✅ Multi-usuario con datos aislados (RLS por usuario)
 ✅ Persistencia en PostgreSQL (Supabase)
+✅ PWA con service worker (offline cache)
+✅ Prevención de XSS en toda la UI
 
-─── Stack v6.0.0 ───────────────────────────────────────
+─── Seguridad v6.1.0 ────────────────────────────────────
+✅ Supabase Auth (JWT, password hashing server-side)
+✅ RLS habilitado con policies por usuario
+✅ PIN encriptado en localStorage (XOR + sessionStorage key)
+✅ XSS prevenido (escapeHTML en toda la generación de HTML)
+✅ Service worker con cache offline
+
+─── Stack v6.1.0 ───────────────────────────────────────
 Frontend: HTML, CSS, JavaScript vanilla, Chart.js, Supabase JS Client
-Database: PostgreSQL (Supabase)
+Auth:     Supabase Auth (email/password)
+Database: PostgreSQL (Supabase) + RLS
 Deploy:   Vercel (static hosting)
+PWA:      Service worker + manifest
+
+─── Migración ───────────────────────────────────────────
+1. Ejecutar migration.sql en Supabase SQL Editor
+2. Deployar la nueva versión en Vercel
+3. El primer login crea el usuario en Supabase Auth y migra datos existentes
 
 ─── Enlaces ─────────────────────────────────────────────
-Despliegue: (pendiente Vercel)
 Repositorio: https://github.com/DiegoP76/mis-finanzas.git
 Supabase:   https://iulwhewkgugqhelhjkeu.supabase.co
-Tag:         v6.0.0
+Tag:         v6.1.0
