@@ -49,7 +49,7 @@ let userPin = '';
 let expenseChart = null;
 let monthlyChart = null;
 let currentFilter = 'all';
-let currentMonth = 'all';
+let currentMonth = getDefaultMonth();
 
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const MONTH_SHORT = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
@@ -96,6 +96,9 @@ function updateMonthLabel() {
 function populateMonthSelector() {
     const select = document.getElementById('month-select');
     const available = getAvailableMonths();
+    const current = getDefaultMonth();
+    if (!available.includes(current)) available.push(current);
+    available.sort();
     select.innerHTML = '';
     const allOpt = document.createElement('option');
     allOpt.value = 'all';
