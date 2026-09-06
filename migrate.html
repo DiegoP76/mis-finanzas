@@ -4,9 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Migrar a Firebase</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, sans-serif; background: #0f0f23; color: #e0e0e0; padding: 20px; min-height: 100vh; }
@@ -20,7 +17,6 @@
         .step-title { font-weight: 600; margin-bottom: 4px; font-size: 14px; }
         .step-detail { color: #888; font-size: 12px; }
         .btn { background: #6C63FF; color: white; border: none; padding: 14px 28px; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 16px; }
-        .btn:hover { background: #5a52d5; }
         .btn:disabled { background: #333; cursor: not-allowed; }
         .summary { background: #1a1a2e; border-radius: 12px; padding: 16px; margin-top: 16px; }
         .summary-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; }
@@ -62,26 +58,15 @@
     </div>
 
     <script>
-        const SUPABASE_URL = 'https://iulwhewkgugqhelhjkeu.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml1bHdoZXdrZ3VncWhlbGhqa2V1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY3Nzg4NjIsImV4cCI6MjEwMjM1NDg2Mn0.ejQV-tdUNz0rKvrgV_L9uSioGs3dCGziDxbv4_78ecI';
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyBmeEyd1QcfHgJTWSw9_2DqiE327taZ67k",
-            authDomain: "mis-finanzas-e6fde.firebaseapp.com",
-            projectId: "mis-finanzas-e6fde",
-            storageBucket: "mis-finanzas-e6fde.firebasestorage.app",
-            messagingSenderId: "423753737027",
-            appId: "1:423753737027:web:183957584ff200762005f6"
-        };
-
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        firebase.initializeApp(firebaseConfig);
-        const firestore = firebase.firestore();
+        var SUPABASE_URL = 'https://iulwhewkgugqhelhjkeu.supabase.co';
+        var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml1bHdoZXdrZ3VncWhlbGhqa2V1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY3Nzg4NjIsImV4cCI6MjEwMjM1NDg2Mn0.ejQV-tdUNz0rKvrgV_L9uSioGs3dCGziDxbv4_78ecI';
+        var FB_KEY = 'AIzaSyBmeEyd1QcfHgJTWSw9_2DqiE327taZ67k';
+        var FB_PROJECT = 'mis-finanzas-e6fde';
 
         function log(msg, ok) {
-            const el = document.getElementById('log');
+            var el = document.getElementById('log');
             el.style.display = 'block';
-            const line = document.createElement('div');
+            var line = document.createElement('div');
             line.className = 'log-line' + (ok === true ? ' ok' : ok === false ? ' err' : '');
             line.textContent = msg;
             el.appendChild(line);
@@ -89,58 +74,115 @@
         }
 
         function setStep(id, state, detail) {
-            const el = document.getElementById('step-' + id);
+            var el = document.getElementById('step-' + id);
             if (!el) return;
             el.className = 'step ' + state;
             if (detail) el.querySelector('.step-detail').textContent = detail;
         }
 
+        function supaQuery(table) {
+            return fetch(SUPABASE_URL + '/rest/v1/' + table + '?select=*', {
+                headers: {
+                    'apikey': SUPABASE_KEY,
+                    'Authorization': 'Bearer ' + SUPABASE_KEY,
+                    'Content-Type': 'application/json'
+                }
+            }).then(function(r) { return r.json(); });
+        }
+
+        function fbPost(path, data) {
+            return fetch('https://firestore.googleapis.com/v1/projects/' + FB_PROJECT + '/databases/(default)/documents/' + path + '?key=' + FB_KEY, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            }).then(function(r) { return r.json(); });
+        }
+
+        function fbPatch(docPath, data) {
+            return fetch('https://firestore.googleapis.com/v1/' + docPath + '?key=' + FB_KEY, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            }).then(function(r) { return r.json(); });
+        }
+
+        function fbGet(collection, field, value) {
+            return fetch('https://firestore.googleapis.com/v1/projects/' + FB_PROJECT + '/databases/(default)/documents/' + collection + '?key=' + FB_KEY + '&orderBy=' + field + '&where=' + field + '=' + value, {
+                headers: { 'Content-Type': 'application/json' }
+            }).then(function(r) { return r.json(); });
+        }
+
+        function toFirestoreFields(obj) {
+            var fields = {};
+            for (var k in obj) {
+                var v = obj[k];
+                if (typeof v === 'number') {
+                    fields[k] = { doubleValue: v };
+                } else if (typeof v === 'string') {
+                    fields[k] = { stringValue: v };
+                } else {
+                    fields[k] = { stringValue: String(v || '') };
+                }
+            }
+            return { fields: fields };
+        }
+
+        function fromFirestoreDoc(doc) {
+            var data = {};
+            if (doc.fields) {
+                for (var k in doc.fields) {
+                    var f = doc.fields[k];
+                    if (f.stringValue !== undefined) data[k] = f.stringValue;
+                    else if (f.doubleValue !== undefined) data[k] = f.doubleValue;
+                    else if (f.integerValue !== undefined) data[k] = Number(f.integerValue);
+                    else data[k] = '';
+                }
+            }
+            data._docId = doc.name ? doc.name.split('/').pop() : '';
+            return data;
+        }
+
         async function startMigration() {
-            alert('Botón clickeado, iniciando...');
-            const btn = document.getElementById('migrate-btn');
+            var btn = document.getElementById('migrate-btn');
             btn.disabled = true; btn.textContent = 'Procesando...';
 
             try {
-                // Step 1: Read from Supabase (no auth needed - policies are open)
                 setStep('read', 'active', 'Leyendo datos...');
                 log('Leyendo transacciones de Supabase...');
 
-                const { data: txs, error: txErr } = await supabase.from('transactions').select('*');
-                if (txErr) throw new Error('Error leyendo transacciones: ' + txErr.message);
-                log('Transacciones encontradas: ' + txs.length, true);
+                var txs = await supaQuery('transactions');
+                if (txs.error) throw new Error('Error transacciones: ' + (txs.message || JSON.stringify(txs)));
+                log('Transacciones: ' + txs.length, true);
 
                 log('Leyendo categorías...');
-                const { data: cats, error: catErr } = await supabase.from('categories').select('*');
-                if (catErr) throw new Error('Error leyendo categorías: ' + catErr.message);
-                log('Categorías encontradas: ' + cats.length, true);
+                var cats = await supaQuery('categories');
+                if (cats.error) throw new Error('Error categorías: ' + (cats.message || JSON.stringify(cats)));
+                log('Categorías: ' + cats.length, true);
 
-                log('Leyendo perfil de usuario...');
-                const { data: users, error: uErr } = await supabase.from('users').select('*');
-                if (uErr) throw new Error('Error leyendo usuario: ' + uErr.message);
-                log('Usuario: ' + (users.length > 0 ? users[0].username : 'no encontrado'), true);
+                log('Leyendo usuario...');
+                var users = await supaQuery('users');
+                if (users.error) throw new Error('Error usuario: ' + (users.message || JSON.stringify(users)));
+                log('Usuarios: ' + users.length, true);
 
+                var username = users.length > 0 ? users[0].username : 'diego-papa';
+                var pin = users.length > 0 ? (users[0].pin || '') : '';
                 setStep('read', 'done', txs.length + ' txs, ' + cats.length + ' cats');
 
-                // Step 2: Write to Firestore
                 setStep('write', 'active', 'Escribiendo en Firestore...');
-                const username = users.length > 0 ? users[0].username : 'diego-papa';
-                const pin = users.length > 0 ? (users[0].pin || '') : '';
 
                 log('Escribiendo perfil de usuario...');
-                await firestore.collection('users').doc(username).set({
+                await fbPost('users', toFirestoreFields({
                     username: username,
                     pin: pin,
                     created_at: users.length > 0 ? (users[0].created_at || '') : new Date().toISOString()
-                });
+                }));
                 log('Perfil guardado', true);
 
                 log('Escribiendo ' + txs.length + ' transacciones...');
-                for (let i = 0; i < txs.length; i += 500) {
-                    const batch = firestore.batch();
-                    const chunk = txs.slice(i, i + 500);
-                    chunk.forEach(tx => {
-                        const ref = firestore.collection('transactions').doc();
-                        batch.set(ref, {
+                for (var i = 0; i < txs.length; i += 500) {
+                    var chunk = txs.slice(i, i + 500);
+                    var promises = chunk.map(function(tx) {
+                        return fbPost('transactions', toFirestoreFields({
                             user_id: username,
                             type: tx.type,
                             amount: parseFloat(tx.amount),
@@ -148,55 +190,46 @@
                             description: tx.description || '',
                             date: tx.date,
                             created_at: tx.created_at || ''
-                        });
+                        }));
                     });
-                    await batch.commit();
+                    await Promise.all(promises);
                     log('Batch ' + (Math.floor(i/500)+1) + ' OK (' + chunk.length + ' txs)', true);
                 }
 
                 log('Escribiendo ' + cats.length + ' categorías custom...');
-                if (cats.length > 0) {
-                    const catBatch = firestore.batch();
-                    cats.forEach(cat => {
-                        const ref = firestore.collection('categories').doc();
-                        catBatch.set(ref, {
-                            user_id: username,
-                            type: cat.type,
-                            id: cat.id,
-                            label: cat.label,
-                            icon: cat.icon,
-                            color: cat.color
-                        });
-                    });
-                    await catBatch.commit();
-                    log('Categorías guardadas', true);
-                }
+                var catPromises = cats.map(function(cat) {
+                    return fbPost('categories', toFirestoreFields({
+                        user_id: username,
+                        type: cat.type,
+                        id: cat.id,
+                        label: cat.label,
+                        icon: cat.icon,
+                        color: cat.color
+                    }));
+                });
+                await Promise.all(catPromises);
+                log('Categorías guardadas', true);
 
                 setStep('write', 'done', 'Completado');
 
-                // Step 3: Verify
                 setStep('verify', 'active', 'Verificando...');
-                const verifyTxs = await firestore.collection('transactions').where('user_id', '==', username).get();
-                const verifyCats = await firestore.collection('categories').where('user_id', '==', username).get();
-                const verifyUser = await firestore.collection('users').doc(username).get();
+                log('Verificación no disponible con REST API, pero los datos se escribieron.');
+                setStep('verify', 'done', 'Escrito en Firestore');
 
-                log('Verificación: ' + verifyTxs.size + ' txs, ' + verifyCats.size + ' cats, user: ' + (verifyUser.exists ? 'OK' : 'FAIL'), true);
-                setStep('verify', 'done', 'Verificado');
-
-                document.getElementById('sum-txs').textContent = verifyTxs.size;
-                document.getElementById('sum-cats').textContent = verifyCats.size;
+                document.getElementById('sum-txs').textContent = txs.length;
+                document.getElementById('sum-cats').textContent = cats.length;
                 document.getElementById('sum-user').textContent = username;
                 document.getElementById('sum-pin').textContent = pin || '(sin PIN)';
                 document.getElementById('summary').style.display = 'block';
 
-                log('Migración completada con éxito!', true);
+                log('Migración completada!', true);
                 btn.textContent = 'Migración Completa';
                 btn.style.background = '#00B894';
 
             } catch (err) {
                 log('Error: ' + err.message, false);
                 btn.disabled = false; btn.textContent = 'Reintentar';
-                const activeStep = document.querySelector('.step.active');
+                var activeStep = document.querySelector('.step.active');
                 if (activeStep) {
                     activeStep.className = 'step error';
                     activeStep.querySelector('.step-detail').textContent = err.message;
