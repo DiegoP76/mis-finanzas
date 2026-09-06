@@ -45,7 +45,7 @@ let userPin = '';
 let expenseChart = null;
 let monthlyChart = null;
 let currentFilter = 'all';
-let currentMonth = getDefaultMonth();
+let currentMonth = 'all';
 
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const MONTH_SHORT = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
@@ -109,9 +109,7 @@ function populateMonthSelector() {
 
 // ─── Firestore helpers ────────────────────────────────────
 async function fsQuery(collection, field, value) {
-    console.log('fsQuery:', collection, field, value);
     const snap = await db.collection(collection).where(field, '==', value).get();
-    console.log('fsQuery result:', snap.size, 'docs');
     return snap.docs.map(d => ({ _docId: d.id, ...d.data() }));
 }
 
@@ -379,13 +377,11 @@ async function handleAuth(e) {
 // ─── Data loading ───────────────────────────────────────
 async function loadAllData() {
     try {
-        console.log('loadAllData: currentUser =', currentUsername);
         const [txs, cats, pinRows] = await Promise.all([
             fsQuery('transactions', 'user_id', currentUsername),
             fsQuery('categories', 'user_id', currentUsername),
             fsQuery('users', 'username', currentUsername)
         ]);
-        console.log('loadAllData: txs =', txs.length, 'cats =', cats.length, 'users =', pinRows.length);
         transactions = txs.map(t => ({ id: t._docId, type: t.type, amount: parseFloat(t.amount), category: t.category, description: t.description, date: t.date }));
         const grouped = { expense: [], income: [] };
         cats.forEach(c => {
