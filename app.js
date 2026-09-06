@@ -1,4 +1,4 @@
-const APP_VERSION = '7.0.0';
+const APP_VERSION = '7.0.1';
 
 const FIREBASE_CONFIG = {
     apiKey: "AIzaSyBmeEyd1QcfHgJTWSw9_2DqiE327taZ67k",
@@ -10,6 +10,10 @@ const FIREBASE_CONFIG = {
 };
 const fbApp = firebase.initializeApp(FIREBASE_CONFIG);
 const db = firebase.firestore();
+db.enablePersistence().catch(function(err) {
+    if (err.code === 'failed-precondition') console.warn('Persistence failed: multiple tabs open');
+    else if (err.code === 'unimplemented') console.warn('Persistence not supported by browser');
+});
 
 const VALID_USERNAME = 'diegopapa';
 const VALID_PASSWORD = 'diego-pa541';
@@ -287,12 +291,12 @@ async function checkSession() {
     if (lastUser && lastUser === VALID_USERNAME) {
         try {
             const rows = await fsQuery('users', 'username', lastUser);
-            if (rows.length > 0 && rows[0].pin) {
+            if (rows.length > 0) {
                 currentUser = lastUser;
                 currentUsername = lastUser;
-                userPin = rows[0].pin;
+                userPin = rows[0].pin || '';
                 await loadAllData();
-                showPin();
+                if (userPin) showPin(); else initApp();
                 return;
             }
         } catch (e) {}

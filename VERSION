@@ -1,9 +1,9 @@
-Mis Finanzas v7.0.0 ✅ ESTABLE
+Mis Finanzas v7.0.1 ✅ ESTABLE
 =================================
-Migrado de Supabase a Firebase Firestore.
-Login simple (sin Firebase Auth).
+Firebase Firestore + login hardcodeado + fixes.
 
 Changelog:
+v7.0.1 - Fix checkSession auto-login for no-PIN users, offline persistence, version sync, mobile-web-app-capable meta
 v7.0.0 - Migración completa a Firebase Firestore + login hardcodeado
 v6.2.1 - Fix duplicate event listeners
 v6.2.0 - Always require login + version badge + auto-update
