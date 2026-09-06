@@ -11,7 +11,7 @@ const FIREBASE_CONFIG = {
 const fbApp = firebase.initializeApp(FIREBASE_CONFIG);
 const db = firebase.firestore();
 
-const VALID_USERNAME = 'diego-papa';
+const VALID_USERNAME = 'diegopapa';
 const VALID_PASSWORD = 'diego-pa541';
 
 const DEFAULT_CATEGORIES = {
