@@ -13,7 +13,8 @@
     <title>Mis Finanzas</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
     <script>
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('/sw.js').catch(function(){});
@@ -365,10 +366,6 @@
             <div class="auth-icon">💰</div>
             <h2 class="auth-title" id="auth-title">Iniciar sesión</h2>
             <p class="auth-subtitle" id="auth-subtitle">Ingresá tu usuario y contraseña</p>
-            <div class="auth-tabs">
-                <button class="auth-tab active" data-auth="login" onclick="switchAuth('login')">Ingresar</button>
-                <button class="auth-tab" data-auth="register" onclick="switchAuth('register')">Crear cuenta</button>
-            </div>
             <form id="auth-form" autocomplete="off">
                 <input type="text" id="auth-username" placeholder="Usuario" autocomplete="username" required>
                 <input type="password" id="auth-password" placeholder="Contraseña" autocomplete="current-password" required>

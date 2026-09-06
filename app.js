@@ -1,8 +1,18 @@
-const APP_VERSION = '6.2.0';
+const APP_VERSION = '7.0.0';
 
-const SUPABASE_URL = 'https://iulwhewkgugqhelhjkeu.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml1bHdoZXdrZ3VncWhlbGhqa2V1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY3Nzg4NjIsImV4cCI6MjEwMjM1NDg2Mn0.ejQV-tdUNz0rKvrgV_L9uSioGs3dCGziDxbv4_78ecI';
-const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyBmeEyd1QcfHgJTWSw9_2DqiE327taZ67k",
+    authDomain: "mis-finanzas-e6fde.firebaseapp.com",
+    projectId: "mis-finanzas-e6fde",
+    storageBucket: "mis-finanzas-e6fde.firebasestorage.app",
+    messagingSenderId: "423753737027",
+    appId: "1:423753737027:web:183957584ff200762005f6"
+};
+const fbApp = firebase.initializeApp(FIREBASE_CONFIG);
+const db = firebase.firestore();
+
+const VALID_USERNAME = 'diego-papa';
+const VALID_PASSWORD = 'diego-pa541';
 
 const DEFAULT_CATEGORIES = {
     expense: [
@@ -97,36 +107,23 @@ function populateMonthSelector() {
     select.value = currentMonth;
 }
 
-// ─── Supabase helpers ─────────────────────────────────────
-async function supaQuery(table, options = {}) {
-    let query = db.from(table).select(options.select || '*');
-    if (options.filter) {
-        options.filter.forEach(f => { query = query.eq(f.col, f.val); });
-    }
-    if (options.order) query = query.order(options.order.col, { ascending: options.order.asc || false });
-    const { data, error } = await query;
-    if (error) throw new Error(error.message);
-    return data;
+// ─── Firestore helpers ────────────────────────────────────
+async function fsQuery(collection, field, value) {
+    const snap = await db.collection(collection).where(field, '==', value).get();
+    return snap.docs.map(d => ({ _docId: d.id, ...d.data() }));
 }
 
-async function supaInsert(table, rows) {
-    const { data, error } = await db.from(table).insert(rows).select();
-    if (error) throw new Error(error.message);
-    return data;
+async function fsAdd(collection, data) {
+    const ref = await db.collection(collection).add(data);
+    return ref.id;
 }
 
-async function supaUpdate(table, updates, filters) {
-    let query = db.from(table).update(updates);
-    filters.forEach(f => { query = query.eq(f.col, f.val); });
-    const { error } = await query;
-    if (error) throw new Error(error.message);
+async function fsUpdate(collection, docId, data) {
+    await db.collection(collection).doc(docId).update(data);
 }
 
-async function supaDelete(table, filters) {
-    let query = db.from(table).delete();
-    filters.forEach(f => { query = query.eq(f.col, f.val); });
-    const { error } = await query;
-    if (error) throw new Error(error.message);
+async function fsDelete(collection, docId) {
+    await db.collection(collection).doc(docId).delete();
 }
 
 // ─── Secure PIN storage ──────────────────────────────────
@@ -257,14 +254,14 @@ function skipPin() {
 }
 
 async function setUserPin(pin) {
-    try { await supaUpdate('users', { pin }, [{ col: 'user_id', val: currentUser }]); } catch {}
+    try { await fsUpdate('users', currentUsername, { pin }); } catch {}
     userPin = pin;
     cachePin(pin);
-    if (currentUser) localStorage.setItem('finanzas_last_user', currentUsername);
+    localStorage.setItem('finanzas_last_user', currentUsername);
 }
 
 async function removeUserPin() {
-    try { await supaUpdate('users', { pin: '' }, [{ col: 'user_id', val: currentUser }]); } catch {}
+    try { await fsUpdate('users', currentUsername, { pin: '' }); } catch {}
     userPin = '';
     clearPinCache();
 }
@@ -287,11 +284,11 @@ function togglePin() {
 // ─── Auth ───────────────────────────────────────────────
 async function checkSession() {
     const lastUser = localStorage.getItem('finanzas_last_user');
-    if (lastUser) {
+    if (lastUser && lastUser === VALID_USERNAME) {
         try {
-            const rows = await supaQuery('users', { filter: [{ col: 'username', val: lastUser }], select: 'user_id,pin' });
+            const rows = await fsQuery('users', 'username', lastUser);
             if (rows.length > 0 && rows[0].pin) {
-                currentUser = rows[0].user_id;
+                currentUser = lastUser;
                 currentUsername = lastUser;
                 userPin = rows[0].pin;
                 await loadAllData();
@@ -304,47 +301,24 @@ async function checkSession() {
 }
 
 async function login(username, password) {
-    const email = username + '@misfinanzas.app';
-    const { data, error } = await db.auth.signInWithPassword({ email, password });
-    if (error) {
-        const msg = (error.message || '').toLowerCase();
-        if (msg.includes('invalid login') || msg.includes('credentials') || msg.includes('not found')) {
-            throw new Error('Usuario o contraseña incorrectos');
+    if (username === VALID_USERNAME && password === VALID_PASSWORD) {
+        currentUser = username;
+        currentUsername = username;
+        const rows = await fsQuery('users', 'username', username);
+        if (rows.length === 0) {
+            await fsAdd('users', { username, pin: '', created_at: new Date().toISOString() });
+            userPin = '';
+        } else {
+            userPin = rows[0].pin || '';
         }
-        if (msg.includes('already') || msg.includes('registered')) {
-            throw new Error('Usuario o contraseña incorrectos');
-        }
-        throw new Error(error.message);
-    }
-    currentUser = data.user.id;
-    currentUsername = username;
-    const profiles = await supaQuery('users', { filter: [{ col: 'user_id', val: currentUser }], select: 'pin' });
-    if (profiles.length === 0) {
-        await supaInsert('users', [{ username, user_id: currentUser, pin: '' }]);
-        userPin = '';
+        cachePin(userPin);
+        localStorage.setItem('finanzas_last_user', currentUsername);
+        await loadAllData();
+        hideAuth();
+        if (userPin) showPin(); else maybeSetPin();
     } else {
-        userPin = profiles[0].pin || '';
+        throw new Error('Usuario o contraseña incorrectos');
     }
-    cachePin(userPin);
-    localStorage.setItem('finanzas_last_user', currentUsername);
-    await loadAllData();
-    hideAuth();
-    if (userPin) showPin(); else maybeSetPin();
-}
-
-async function register(username, password) {
-    const email = username + '@misfinanzas.app';
-    const { data, error } = await db.auth.signUp({ email, password });
-    if (error) {
-        if (error.message.includes('already')) throw new Error('El usuario ya existe');
-        throw new Error(error.message);
-    }
-    currentUser = data.user.id;
-    currentUsername = username;
-    await supaInsert('users', [{ username, user_id: currentUser, pin: '' }]);
-    await loadAllData();
-    hideAuth();
-    maybeSetPin();
 }
 
 function maybeSetPin() {
@@ -360,7 +334,6 @@ function maybeSetPin() {
 }
 
 async function logout() {
-    try { await db.auth.signOut(); } catch {}
     clearPinCache();
     localStorage.removeItem('finanzas_last_user');
     currentUser = null; currentUsername = ''; transactions = [];
@@ -385,27 +358,6 @@ function hideAuth() {
     document.getElementById('app').classList.remove('hidden');
 }
 
-let authMode = 'login';
-
-function switchAuth(mode) {
-    authMode = mode;
-    document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
-    document.querySelector('.auth-tab[data-auth="' + mode + '"]').classList.add('active');
-    document.getElementById('auth-error').textContent = '';
-    document.getElementById('auth-username').value = '';
-    document.getElementById('auth-password').value = '';
-    const btn = document.getElementById('auth-submit-btn');
-    if (mode === 'login') {
-        btn.textContent = 'Ingresar';
-        document.getElementById('auth-title').textContent = 'Iniciar sesión';
-        document.getElementById('auth-subtitle').textContent = 'Ingresá tu usuario y contraseña';
-    } else {
-        btn.textContent = 'Crear cuenta';
-        document.getElementById('auth-title').textContent = 'Crear cuenta';
-        document.getElementById('auth-subtitle').textContent = 'Elegí un usuario y contraseña';
-    }
-}
-
 async function handleAuth(e) {
     e.preventDefault();
     const username = document.getElementById('auth-username').value.trim();
@@ -416,22 +368,21 @@ async function handleAuth(e) {
     btn.disabled = true; btn.textContent = '...';
     errorEl.textContent = '';
     try {
-        if (authMode === 'login') await login(username, password);
-        else await register(username, password);
+        await login(username, password);
     } catch (err) { errorEl.textContent = err.message; }
     btn.disabled = false;
-    btn.textContent = authMode === 'login' ? 'Ingresar' : 'Crear cuenta';
+    btn.textContent = 'Ingresar';
 }
 
 // ─── Data loading ───────────────────────────────────────
 async function loadAllData() {
     try {
         const [txs, cats, pinRows] = await Promise.all([
-            supaQuery('transactions', { filter: [{ col: 'user_id', val: currentUser }], order: { col: 'created_at', asc: false } }),
-            supaQuery('categories', { filter: [{ col: 'user_id', val: currentUser }], order: { col: 'label', asc: true } }),
-            supaQuery('users', { filter: [{ col: 'user_id', val: currentUser }], select: 'pin' })
+            fsQuery('transactions', 'user_id', currentUsername),
+            fsQuery('categories', 'user_id', currentUsername),
+            fsQuery('users', 'username', currentUsername)
         ]);
-        transactions = txs.map(t => ({ id: Number(t.id), type: t.type, amount: parseFloat(t.amount), category: t.category, description: t.description, date: t.date }));
+        transactions = txs.map(t => ({ id: t._docId, type: t.type, amount: parseFloat(t.amount), category: t.category, description: t.description, date: t.date }));
         const grouped = { expense: [], income: [] };
         cats.forEach(c => {
             if (grouped[c.type]) grouped[c.type].push({ id: c.id, label: c.label, icon: c.icon, color: c.color });
@@ -448,32 +399,39 @@ async function loadAllData() {
 }
 
 async function addTransactionAPI(tx) {
-    const id = Date.now() * 1000 + Math.floor(Math.random() * 1000);
-    await supaInsert('transactions', [{ id, username: currentUsername, user_id: currentUser, type: tx.type, amount: tx.amount, category: tx.category, description: tx.description || '', date: tx.date || '' }]);
-    transactions.push({ id, type: tx.type, amount: tx.amount, category: tx.category, description: tx.description || '', date: tx.date || '' });
+    const docId = await fsAdd('transactions', {
+        user_id: currentUsername, type: tx.type, amount: tx.amount,
+        category: tx.category, description: tx.description || '', date: tx.date || '',
+        created_at: new Date().toISOString()
+    });
+    transactions.push({ id: docId, type: tx.type, amount: tx.amount, category: tx.category, description: tx.description || '', date: tx.date || '' });
 }
 
 async function deleteTransactionAPI(id) {
-    await supaDelete('transactions', [{ col: 'id', val: id }]);
-    transactions = transactions.filter(tx => tx.id !== Number(id));
+    await fsDelete('transactions', id);
+    transactions = transactions.filter(tx => tx.id !== id);
 }
 
 async function editTransactionAPI(id, data) {
-    await supaUpdate('transactions', { type: data.type, amount: data.amount, category: data.category, description: data.description || '', date: data.date || '' }, [{ col: 'id', val: id }]);
+    await fsUpdate('transactions', id, { type: data.type, amount: data.amount, category: data.category, description: data.description || '', date: data.date || '' });
     const tx = transactions.find(t => t.id === id);
     if (tx) { tx.type = data.type; tx.amount = data.amount; tx.category = data.category; tx.description = data.description; tx.date = data.date; }
 }
 
 async function addCategoryAPI(type, label, icon) {
-    const id = 'custom_' + Date.now() + Math.floor(Math.random() * 100);
+    const customId = 'custom_' + Date.now() + Math.floor(Math.random() * 100);
     const colors = { expense: '#A0A4B8', income: '#00B894' };
-    await supaInsert('categories', [{ id, username: currentUsername, user_id: currentUser, type, label, icon: icon || '📌', color: colors[type] }]);
-    customUserCategories[type].push({ id, label, icon: icon || '📌', color: colors[type] });
+    await fsAdd('categories', {
+        user_id: currentUsername, type, id: customId, label, icon: icon || '📌', color: colors[type]
+    });
+    customUserCategories[type].push({ id: customId, label, icon: icon || '📌', color: colors[type] });
     rebuildCategoryMap();
 }
 
 async function removeCategoryAPI(type, id) {
-    await supaDelete('categories', [{ col: 'id', val: id }]);
+    const cats = await fsQuery('categories', 'user_id', currentUsername);
+    const match = cats.find(c => c.id === id && c.type === type);
+    if (match) await fsDelete('categories', match._docId);
     customUserCategories[type] = customUserCategories[type].filter(c => c.id !== id);
     rebuildCategoryMap();
 }
@@ -694,11 +652,10 @@ function renderTransactions() {
 function renderTransactionHTML(tx) {
     const cat = CATEGORY_MAP[tx.category] || { label: tx.category, icon: '📦' };
     const prefix = tx.type === 'expense' ? '-' : '+';
-    return '<div class="transaction-item" data-id="' + tx.id + '" onclick="openEditTx(' + tx.id + ')"><div class="transaction-cat-icon ' + tx.type + '"><span>' + cat.icon + '</span></div><div class="transaction-info"><div class="transaction-desc">' + escapeHTML(tx.description) + '</div><div class="transaction-meta">' + formatDate(tx.date) + ' <span class="transaction-category">' + escapeHTML(cat.label) + '</span></div></div><span class="transaction-amount ' + tx.type + '">' + prefix + formatCurrency(tx.amount) + '</span><button class="delete-btn" onclick="event.stopPropagation();deleteTransaction(' + tx.id + ')" title="Eliminar">&times;</button></div>';
+    return '<div class="transaction-item" data-id="' + tx.id + '" onclick="openEditTx(\'' + tx.id + '\')"><div class="transaction-cat-icon ' + tx.type + '"><span>' + cat.icon + '</span></div><div class="transaction-info"><div class="transaction-desc">' + escapeHTML(tx.description) + '</div><div class="transaction-meta">' + formatDate(tx.date) + ' <span class="transaction-category">' + escapeHTML(cat.label) + '</span></div></div><span class="transaction-amount ' + tx.type + '">' + prefix + formatCurrency(tx.amount) + '</span><button class="delete-btn" onclick="event.stopPropagation();deleteTransaction(\'' + tx.id + '\')" title="Eliminar">&times;</button></div>';
 }
 
 async function deleteTransaction(id) {
-    id = Number(id);
     if (!confirm('¿Eliminar este movimiento?')) return;
     try { await deleteTransactionAPI(id); } catch (err) { showToast('Error al eliminar: ' + err.message); return; }
     updateAll(); showToast('Movimiento eliminado');
@@ -707,7 +664,6 @@ async function deleteTransaction(id) {
 let editTxType = 'expense';
 
 function openEditTx(id) {
-    id = Number(id);
     const tx = transactions.find(t => t.id === id);
     if (!tx) return;
     editTxType = tx.type;
@@ -736,7 +692,7 @@ function setEditType(type) {
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('edit-tx-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const id = Number(document.getElementById('edit-tx-modal').dataset.editId);
+        const id = document.getElementById('edit-tx-modal').dataset.editId;
         const data = {
             type: editTxType,
             amount: parseFloat(document.getElementById('edit-tx-amount').value),

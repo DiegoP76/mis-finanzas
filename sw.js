@@ -1,4 +1,4 @@
-const CACHE_NAME = 'finanzas-v6.2';
+const CACHE_NAME = 'finanzas-v7.0';
 const STATIC_ASSETS = [
     '/',
     '/index.html',
@@ -26,7 +26,7 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('fetch', event => {
     const url = new URL(event.request.url);
-    if (url.hostname.includes('supabase') || url.hostname.includes('cdn.jsdelivr')) {
+    if (url.hostname.includes('firestore.googleapis') || url.hostname.includes('firebaseio') || url.hostname.includes('cdn.jsdelivr') || url.hostname.includes('gstatic')) {
         event.respondWith(
             caches.match(event.request).then(cached => {
                 const fetched = fetch(event.request).then(response => {

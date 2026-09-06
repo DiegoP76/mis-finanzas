@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Migrar a Firebase</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, sans-serif; background: #0f0f23; color: #e0e0e0; padding: 20px; min-height: 100vh; }
+        .container { max-width: 600px; margin: 0 auto; }
+        h1 { color: #6C63FF; margin-bottom: 8px; font-size: 22px; }
+        .subtitle { color: #888; margin-bottom: 24px; font-size: 14px; }
+        .step { background: #1a1a2e; border-radius: 12px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #333; }
+        .step.active { border-left-color: #FFC107; }
+        .step.done { border-left-color: #00B894; }
+        .step.error { border-left-color: #FF6B6B; }
+        .step-title { font-weight: 600; margin-bottom: 4px; font-size: 14px; }
+        .step-detail { color: #888; font-size: 12px; }
+        .btn { background: #6C63FF; color: white; border: none; padding: 14px 28px; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 16px; }
+        .btn:hover { background: #5a52d5; }
+        .btn:disabled { background: #333; cursor: not-allowed; }
+        .summary { background: #1a1a2e; border-radius: 12px; padding: 16px; margin-top: 16px; }
+        .summary-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; }
+        .summary-val { color: #00B894; font-weight: 600; }
+        .log { background: #0d0d1a; border-radius: 8px; padding: 12px; margin-top: 16px; font-family: monospace; font-size: 11px; max-height: 300px; overflow-y: auto; display: none; }
+        .log-line { padding: 2px 0; color: #888; }
+        .log-line.ok { color: #00B894; }
+        .log-line.err { color: #FF6B6B; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Migrar a Firebase</h1>
+        <p class="subtitle">Exporta datos de Supabase y los importa en Firestore</p>
+
+        <div id="step-login" class="step">
+            <div class="step-title">1. Conectar a Supabase</div>
+            <div class="step-detail">Usando sesión existente...</div>
+        </div>
+        <div id="step-read" class="step">
+            <div class="step-title">2. Leer datos de Supabase</div>
+            <div class="step-detail">Esperando...</div>
+        </div>
+        <div id="step-write" class="step">
+            <div class="step-title">3. Escribir en Firestore</div>
+            <div class="step-detail">Esperando...</div>
+        </div>
+        <div id="step-done" class="step">
+            <div class="step-title">4. Verificar</div>
+            <div class="step-detail">Esperando...</div>
+        </div>
+
+        <div id="summary" class="summary" style="display:none">
+            <div class="summary-row"><span>Transacciones</span><span class="summary-val" id="sum-txs">0</span></div>
+            <div class="summary-row"><span>Categorías custom</span><span class="summary-val" id="sum-cats">0</span></div>
+            <div class="summary-row"><span>Usuario</span><span class="summary-val" id="sum-user">-</span></div>
+            <div class="summary-row"><span>PIN</span><span class="summary-val" id="sum-pin">-</span></div>
+        </div>
+
+        <button class="btn" id="migrate-btn" onclick="startMigration()">Iniciar Migración</button>
+
+        <div id="log" class="log"></div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://iulwhewkgugqhelhjkeu.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml1bHdoZXdrZ3VncWhlbGhqa2V1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY3Nzg4NjIsImV4cCI6MjEwMjM1NDg2Mn0.ejQV-tdUNz0rKvrgV_L9uSioGs3dCGziDxbv4_78ecI';
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBmeEyd1QcfHgJTWSw9_2DqiE327taZ67k",
+            authDomain: "mis-finanzas-e6fde.firebaseapp.com",
+            projectId: "mis-finanzas-e6fde",
+            storageBucket: "mis-finanzas-e6fde.firebasestorage.app",
+            messagingSenderId: "423753737027",
+            appId: "1:423753737027:web:183957584ff200762005f6"
+        };
+
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        firebase.initializeApp(firebaseConfig);
+        const firestore = firebase.firestore();
+
+        function log(msg, ok) {
+            const el = document.getElementById('log');
+            el.style.display = 'block';
+            const line = document.createElement('div');
+            line.className = 'log-line' + (ok === true ? ' ok' : ok === false ? ' err' : '');
+            line.textContent = msg;
+            el.appendChild(line);
+            el.scrollTop = el.scrollHeight;
+        }
+
+        function setStep(id, state, detail) {
+            const el = document.getElementById('step-' + id);
+            el.className = 'step ' + state;
+            if (detail) el.querySelector('.step-detail').textContent = detail;
+        }
+
+        async function startMigration() {
+            const btn = document.getElementById('migrate-btn');
+            btn.disabled = true; btn.textContent = 'Migrando...';
+
+            try {
+                // Step 1: Check Supabase session
+                setStep('login', 'active', 'Verificando sesión...');
+                log('Conectando a Supabase...');
+
+                const { data: { session } } = await supabase.auth.getSession();
+                if (!session) {
+                    setStep('login', 'error', 'No hay sesión activa. Abrí la app primero y logueate.');
+                    log('Error: no hay sesión de Supabase. Abrí la app y logueate primero.', false);
+                    btn.disabled = false; btn.textContent = 'Reintentar';
+                    return;
+                }
+
+                const userId = session.user.id;
+                log('Sesión activa. User ID: ' + userId, true);
+                setStep('login', 'done', 'Conectado');
+
+                // Step 2: Read from Supabase
+                setStep('read', 'active', 'Leyendo datos...');
+                log('Leyendo transacciones...');
+
+                const { data: txs, error: txErr } = await supabase.from('transactions')
+                    .select('*').eq('user_id', userId);
+                if (txErr) throw new Error('Error leyendo transacciones: ' + txErr.message);
+                log('Transacciones encontradas: ' + txs.length, true);
+
+                log('Leyendo categorías...');
+                const { data: cats, error: catErr } = await supabase.from('categories')
+                    .select('*').eq('user_id', userId);
+                if (catErr) throw new Error('Error leyendo categorías: ' + catErr.message);
+                log('Categorías encontradas: ' + cats.length, true);
+
+                log('Leyendo perfil de usuario...');
+                const { data: users, error: uErr } = await supabase.from('users')
+                    .select('*').eq('user_id', userId);
+                if (uErr) throw new Error('Error leyendo usuario: ' + uErr.message);
+                log('Usuario: ' + (users.length > 0 ? users[0].username : 'no encontrado'), true);
+
+                setStep('read', 'done', txs.length + ' txs, ' + cats.length + ' cats');
+
+                // Step 3: Write to Firestore
+                setStep('write', 'active', 'Escribiendo en Firestore...');
+                const username = users.length > 0 ? users[0].username : 'diego-papa';
+                const pin = users.length > 0 ? (users[0].pin || '') : '';
+
+                // Write user profile
+                log('Escribiendo perfil de usuario...');
+                await firestore.collection('users').doc(username).set({
+                    username: username,
+                    pin: pin,
+                    created_at: users.length > 0 ? (users[0].created_at || '') : new Date().toISOString()
+                });
+                log('Perfil guardado', true);
+
+                // Write transactions in batches of 500 (Firestore limit)
+                log('Escribiendo ' + txs.length + ' transacciones...');
+                const txBatches = [];
+                for (let i = 0; i < txs.length; i += 500) {
+                    txBatches.push(txs.slice(i, i + 500));
+                }
+                for (let b = 0; b < txBatches.length; b++) {
+                    const batch = firestore.batch();
+                    txBatches[b].forEach(tx => {
+                        const ref = firestore.collection('transactions').doc();
+                        batch.set(ref, {
+                            user_id: username,
+                            type: tx.type,
+                            amount: parseFloat(tx.amount),
+                            category: tx.category,
+                            description: tx.description || '',
+                            date: tx.date,
+                            created_at: tx.created_at || ''
+                        });
+                    });
+                    await batch.commit();
+                    log('Batch ' + (b + 1) + '/' + txBatches.length + ' OK (' + txBatches[b].length + ' txs)', true);
+                }
+
+                // Write custom categories
+                log('Escribiendo ' + cats.length + ' categorías custom...');
+                if (cats.length > 0) {
+                    const catBatch = firestore.batch();
+                    cats.forEach(cat => {
+                        const ref = firestore.collection('categories').doc();
+                        catBatch.set(ref, {
+                            user_id: username,
+                            type: cat.type,
+                            id: cat.id,
+                            label: cat.label,
+                            icon: cat.icon,
+                            color: cat.color
+                        });
+                    });
+                    await catBatch.commit();
+                    log('Categorías guardadas', true);
+                }
+
+                setStep('write', 'done', 'Completado');
+
+                // Step 4: Verify
+                setStep('verify', 'active', 'Verificando...');
+                const verifyTxs = await firestore.collection('transactions').where('user_id', '==', username).get();
+                const verifyCats = await firestore.collection('categories').where('user_id', '==', username).get();
+                const verifyUser = await firestore.collection('users').doc(username).get();
+
+                log('Verificación: ' + verifyTxs.size + ' txs, ' + verifyCats.size + ' cats, user: ' + (verifyUser.exists ? 'OK' : 'FAIL'), true);
+                setStep('verify', 'done', 'Verificado');
+
+                // Show summary
+                document.getElementById('sum-txs').textContent = verifyTxs.size;
+                document.getElementById('sum-cats').textContent = verifyCats.size;
+                document.getElementById('sum-user').textContent = username;
+                document.getElementById('sum-pin').textContent = pin || '(sin PIN)';
+                document.getElementById('summary').style.display = 'block';
+
+                log('Migración completada con éxito!', true);
+                btn.textContent = 'Migración Completa';
+                btn.style.background = '#00B894';
+
+            } catch (err) {
+                log('Error: ' + err.message, false);
+                btn.disabled = false; btn.textContent = 'Reintentar';
+                const activeStep = document.querySelector('.step.active');
+                if (activeStep) {
+                    activeStep.className = 'step error';
+                    activeStep.querySelector('.step-detail').textContent = err.message;
+                }
+            }
+        }
+    </script>
+</body>
+</html>
