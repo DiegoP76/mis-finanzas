@@ -36,20 +36,16 @@
         <h1>Migrar a Firebase</h1>
         <p class="subtitle">Exporta datos de Supabase y los importa en Firestore</p>
 
-        <div id="step-login" class="step">
-            <div class="step-title">1. Conectar a Supabase</div>
-            <div class="step-detail">Usando sesión existente...</div>
-        </div>
         <div id="step-read" class="step">
-            <div class="step-title">2. Leer datos de Supabase</div>
+            <div class="step-title">1. Leer datos de Supabase</div>
             <div class="step-detail">Esperando...</div>
         </div>
         <div id="step-write" class="step">
-            <div class="step-title">3. Escribir en Firestore</div>
+            <div class="step-title">2. Escribir en Firestore</div>
             <div class="step-detail">Esperando...</div>
         </div>
-        <div id="step-done" class="step">
-            <div class="step-title">4. Verificar</div>
+        <div id="step-verify" class="step">
+            <div class="step-title">3. Verificar</div>
             <div class="step-detail">Esperando...</div>
         </div>
 
@@ -94,60 +90,41 @@
 
         function setStep(id, state, detail) {
             const el = document.getElementById('step-' + id);
+            if (!el) return;
             el.className = 'step ' + state;
             if (detail) el.querySelector('.step-detail').textContent = detail;
         }
 
         async function startMigration() {
             const btn = document.getElementById('migrate-btn');
-            btn.disabled = true; btn.textContent = 'Migrando...';
+            btn.disabled = true; btn.textContent = 'Procesando...';
 
             try {
-                // Step 1: Check Supabase session
-                setStep('login', 'active', 'Verificando sesión...');
-                log('Conectando a Supabase...');
-
-                const { data: { session } } = await supabase.auth.getSession();
-                if (!session) {
-                    setStep('login', 'error', 'No hay sesión activa. Abrí la app primero y logueate.');
-                    log('Error: no hay sesión de Supabase. Abrí la app y logueate primero.', false);
-                    btn.disabled = false; btn.textContent = 'Reintentar';
-                    return;
-                }
-
-                const userId = session.user.id;
-                log('Sesión activa. User ID: ' + userId, true);
-                setStep('login', 'done', 'Conectado');
-
-                // Step 2: Read from Supabase
+                // Step 1: Read from Supabase (no auth needed - policies are open)
                 setStep('read', 'active', 'Leyendo datos...');
-                log('Leyendo transacciones...');
+                log('Leyendo transacciones de Supabase...');
 
-                const { data: txs, error: txErr } = await supabase.from('transactions')
-                    .select('*').eq('user_id', userId);
+                const { data: txs, error: txErr } = await supabase.from('transactions').select('*');
                 if (txErr) throw new Error('Error leyendo transacciones: ' + txErr.message);
                 log('Transacciones encontradas: ' + txs.length, true);
 
                 log('Leyendo categorías...');
-                const { data: cats, error: catErr } = await supabase.from('categories')
-                    .select('*').eq('user_id', userId);
+                const { data: cats, error: catErr } = await supabase.from('categories').select('*');
                 if (catErr) throw new Error('Error leyendo categorías: ' + catErr.message);
                 log('Categorías encontradas: ' + cats.length, true);
 
                 log('Leyendo perfil de usuario...');
-                const { data: users, error: uErr } = await supabase.from('users')
-                    .select('*').eq('user_id', userId);
+                const { data: users, error: uErr } = await supabase.from('users').select('*');
                 if (uErr) throw new Error('Error leyendo usuario: ' + uErr.message);
                 log('Usuario: ' + (users.length > 0 ? users[0].username : 'no encontrado'), true);
 
                 setStep('read', 'done', txs.length + ' txs, ' + cats.length + ' cats');
 
-                // Step 3: Write to Firestore
+                // Step 2: Write to Firestore
                 setStep('write', 'active', 'Escribiendo en Firestore...');
                 const username = users.length > 0 ? users[0].username : 'diego-papa';
                 const pin = users.length > 0 ? (users[0].pin || '') : '';
 
-                // Write user profile
                 log('Escribiendo perfil de usuario...');
                 await firestore.collection('users').doc(username).set({
                     username: username,
@@ -156,15 +133,11 @@
                 });
                 log('Perfil guardado', true);
 
-                // Write transactions in batches of 500 (Firestore limit)
                 log('Escribiendo ' + txs.length + ' transacciones...');
-                const txBatches = [];
                 for (let i = 0; i < txs.length; i += 500) {
-                    txBatches.push(txs.slice(i, i + 500));
-                }
-                for (let b = 0; b < txBatches.length; b++) {
                     const batch = firestore.batch();
-                    txBatches[b].forEach(tx => {
+                    const chunk = txs.slice(i, i + 500);
+                    chunk.forEach(tx => {
                         const ref = firestore.collection('transactions').doc();
                         batch.set(ref, {
                             user_id: username,
@@ -177,10 +150,9 @@
                         });
                     });
                     await batch.commit();
-                    log('Batch ' + (b + 1) + '/' + txBatches.length + ' OK (' + txBatches[b].length + ' txs)', true);
+                    log('Batch ' + (Math.floor(i/500)+1) + ' OK (' + chunk.length + ' txs)', true);
                 }
 
-                // Write custom categories
                 log('Escribiendo ' + cats.length + ' categorías custom...');
                 if (cats.length > 0) {
                     const catBatch = firestore.batch();
@@ -201,7 +173,7 @@
 
                 setStep('write', 'done', 'Completado');
 
-                // Step 4: Verify
+                // Step 3: Verify
                 setStep('verify', 'active', 'Verificando...');
                 const verifyTxs = await firestore.collection('transactions').where('user_id', '==', username).get();
                 const verifyCats = await firestore.collection('categories').where('user_id', '==', username).get();
@@ -210,7 +182,6 @@
                 log('Verificación: ' + verifyTxs.size + ' txs, ' + verifyCats.size + ' cats, user: ' + (verifyUser.exists ? 'OK' : 'FAIL'), true);
                 setStep('verify', 'done', 'Verificado');
 
-                // Show summary
                 document.getElementById('sum-txs').textContent = verifyTxs.size;
                 document.getElementById('sum-cats').textContent = verifyCats.size;
                 document.getElementById('sum-user').textContent = username;
