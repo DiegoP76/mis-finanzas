@@ -1,4 +1,4 @@
-const CACHE_NAME = 'finanzas-v7.0';
+const CACHE_NAME = 'finanzas-v7.1';
 const STATIC_ASSETS = [
     '/',
     '/index.html',
@@ -25,8 +25,10 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
+    if (event.request.method !== 'GET') return;
     const url = new URL(event.request.url);
-    if (url.hostname.includes('firestore.googleapis') || url.hostname.includes('firebaseio') || url.hostname.includes('cdn.jsdelivr') || url.hostname.includes('gstatic')) {
+    if (url.hostname.includes('firestore.googleapis') || url.hostname.includes('firebaseio')) return;
+    if (url.hostname.includes('cdn.jsdelivr') || url.hostname.includes('gstatic')) {
         event.respondWith(
             caches.match(event.request).then(cached => {
                 const fetched = fetch(event.request).then(response => {
@@ -44,7 +46,7 @@ self.addEventListener('fetch', event => {
     event.respondWith(
         caches.match(event.request).then(cached => {
             const fetched = fetch(event.request).then(response => {
-                if (response.ok && event.request.method === 'GET') {
+                if (response.ok) {
                     const clone = response.clone();
                     caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
                 }
